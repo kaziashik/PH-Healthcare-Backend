@@ -20,6 +20,14 @@ const PatientRegistrationZodSchema = z.object({
     .optional(),
 });
 
+  const PatientEmailVerifyZodSchema = z.object({
+    
+    email: z.email("Not email!!"),
+     otp: z.string().length(6)
+   
+})
+
+
 const LoginZodSchema= z.object({
   email: z.email(),
   password: z
@@ -34,7 +42,31 @@ const LoginZodSchema= z.object({
     ),
 });
 
+const ForgetPasswordZodSchema=z.object({
+  email: z.email()
+});
+
+
+const ResetPasswordZodSchema=z.object({
+  email: z.email(),
+  newPassword: z
+    .string()
+    .min(8)
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter.")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter.")
+    .regex(/[0-9]/, "Password must contain at least one number.")
+    .regex(
+      /[^A-Za-z0-9]/,
+      "Password must contain at least one special character.",
+    ),
+    otp: z.string().length(6)
+});
+
+
 export const userValidation = {
   PatientRegistrationZodSchema,
-  LoginZodSchema
+  PatientEmailVerifyZodSchema,
+  LoginZodSchema,
+  ForgetPasswordZodSchema,
+  ResetPasswordZodSchema
 };
