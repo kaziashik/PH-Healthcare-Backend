@@ -72,7 +72,7 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
 
   const tempatePath = path.join(
     process.cwd(),
-    "src/app/templates/registration-user-otp.ejs",
+    "src/app/module/templates/registration-user-otp.ejs",
   );
   const templateData = {
     name,
@@ -212,7 +212,7 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
 
   const tempatePath = path.join(
     process.cwd(),
-    "src/app/templates/patient-welcome-email.ejs",
+    "src/app/module/templates/patient-welcome-email.ejs",
   );
 
   const templateData = {
@@ -544,6 +544,7 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
   const otp = crypto.randomInt(100000, 1000000);
   const key = `forget-password-otp: ${isUserExists.email}`;
   const expirationSeconds = 5 * 60;
+
   await redisClient.set(key, otp, {
     expiration: {
       type: "EX",
@@ -553,13 +554,15 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
 
   const tempatePath = path.join(
     process.cwd(),
-    "src/app/templates/forgot-password.ejs",
+    "src/app/module/templates/forgot-password.ejs",
   );
+
   const templateData = {
     name: isUserExists.name,
     otp,
     expirationMinutes: expirationSeconds / 60,
   };
+
   const html = await ejs.renderFile(tempatePath, templateData);
 
   await transporter.sendMail({
@@ -628,7 +631,7 @@ const restPassword = async (payload: IResetPasswordPayload) => {
 
   const tempatePath = path.join(
     process.cwd(),
-    "src/app/templates/reset-password-success.ejs",
+    "src/app/module/templates/reset-password-success.ejs",
   );
   const templateData = {
     name: isUserExists.name,
