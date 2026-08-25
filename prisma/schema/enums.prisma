@@ -11,6 +11,23 @@ enum UserStatus {
   DELETED
 }
 
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  ONGOING
+  COMPLETED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+
 enum Gender {
   MALE
   FEMALE
@@ -20,5 +37,11 @@ enum Gender {
 enum AuthProvider {
   GOOGLE
   CREDENTIAL
+}
+
+enum DoctorVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
