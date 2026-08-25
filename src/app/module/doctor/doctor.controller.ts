@@ -4,6 +4,9 @@ import { catchAsync } from "../../utils/catchAsync";
 import { sendResponse } from "../../utils/sendResponse";
 import { DoctorServices } from "./doctor.service";
 import { ApplyAsDoctorValidationZodSchema } from "./doctor.validation";
+import { IVerifyDoctorEmailPayload } from "./doctor.interface";
+import { prisma } from "../../lib/prisma";
+import { Role } from "../../../generated/prisma/enums";
 
 const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
 	const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -34,6 +37,40 @@ const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+
+const verifyDoctorEmail = catchAsync(async (req: Request, res: Response) => {
+	
+	const payload = req.body;
+
+	const result = await DoctorServices.verifyDoctorEmail(payload)
+	sendResponse(res, {
+		statusCode: httpStatus.OK,
+		success: true,
+		message: "Doctor Email Verified Successfully",
+		data: result,
+	});
+});
+
+const approveDoctor = catchAsync(async (req: Request, res: Response) => {
+	
+	const payload = req.body;
+	const user = req.user!
+
+	const result = await DoctorServices.approveDoctor(payload, user)
+	sendResponse(res, {
+		statusCode: httpStatus.OK,
+		success: true,
+		message: "Doctor Applicaton  Verified Successfully",
+		data: result,
+	});
+});
+
+
+
+
+
 export const DoctorController = {
 	applyAsDoctor,
+	verifyDoctorEmail,
+	approveDoctor,
 };
