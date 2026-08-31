@@ -10,6 +10,7 @@ import { RequestUser } from "../../middleware/checkAuth";
 const bookAppointment = async (payload: any, user: RequestUser) => {
   // prisma transaction rollback appoinment book until payment complet 3 stpes
   const transationResult = await prisma.$transaction(async (tx) => {
+
     // 1. appointment creat in prisma
     const appointment = await tx.appointment.create({
       data: {
@@ -17,8 +18,10 @@ const bookAppointment = async (payload: any, user: RequestUser) => {
       },
     });
 
-    // 2. bkashPyment respone form bkash
 
+
+
+    // 2. bkashPyment respone form bkash
     const bkashIdToken = await getBkashIdToken();
 
     if (!bkashIdToken) {
@@ -51,8 +54,8 @@ const bookAppointment = async (payload: any, user: RequestUser) => {
 
     const bkashCreatePaymentResult = await bkashCreatePaymentResponse.json();
 
-    // 3. payment model creat in prisma model
 
+    // 3. payment model creat in prisma model
     await tx.payment.create({
       data: {
         merchantInvoiceNumber: bkashCreatePaymentResult.merchantInvoiceNumber,

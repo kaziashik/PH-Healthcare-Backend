@@ -25,10 +25,17 @@ router.post("/verify-email",
 
 router.post("/login",validateRequest(userValidation.LoginZodSchema), AuthController.loginUser);
 router.get(
-  "/me",
+  "/login",
   auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
   AuthController.getMe,
 );
+router.get(
+	"/me",
+	auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
+	// validateRequest
+	AuthController.getMe,
+)
+
 router.post("/google", AuthController.googleLogin);
 router.post("/refresh-token", AuthController.refreshToken);
 

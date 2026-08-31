@@ -11,6 +11,7 @@ import  crypto from "crypto"
 import { userRoutes } from './app/module/user/user.router'
 import { AppointementRoutes } from './app/module/appointment/appointment.route'
 import { DoctorRoutes } from './app/module/doctor/doctor.router'
+import { ScheduleRoutes } from './app/module/shedule/shedule.route'
 
 
 
@@ -35,6 +36,8 @@ app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/appointment", AppointementRoutes);
 
 app.use("/api/v1/doctor", DoctorRoutes);
+
+app.use("/api/v1/schedule", ScheduleRoutes);
 
 app.get("/test",async (req: Request, res: Response,next: NextFunction) => {
 try {
