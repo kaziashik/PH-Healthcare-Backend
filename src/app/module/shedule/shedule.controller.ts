@@ -18,10 +18,37 @@ const createSchedule = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const getMySchedules = catchAsync(async (req: Request, res: Response) => {
+    const user = req.user!;
+
+    const { data, meta } = await ScheduleServices.getMySchedules(req.query, user);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedules Retrieved Successfully",
+        data,
+        meta,
+    });
+});
+
+const getAllSchedules = catchAsync(async (req: Request, res: Response) => {
+    const { data, meta } = await ScheduleServices.getAllSchedules(req.query);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedules Retrieved Successfully",
+        data,
+        meta,
+    });
+});
+
+
+
+
 export const ScheduleController = {
     createSchedule,
-    // getMySchedules,
-    // getAllSchedules,
+    getMySchedules,
+    getAllSchedules,
     // getTodaysSchedules,
     // getScheduleById,
     // updateSchedule,

@@ -16,4 +16,18 @@ router.post(
     ScheduleController.createSchedule,
 );
 
+
+router.get(
+    "/my-schedules",
+    auth(Role.DOCTOR),
+    ScheduleController.getMySchedules,
+);
+
+
+router.get(
+    "/all-schedules",
+    auth(Role.ADMIN, Role.SUPER_ADMIN),
+    ScheduleController.getAllSchedules,
+);
+
 export const ScheduleRoutes = router;
