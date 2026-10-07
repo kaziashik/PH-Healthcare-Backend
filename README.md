@@ -6,7 +6,7 @@ REST API for a doctor-appointment platform: patients book consultations, doctors
 
 ## Where the project stands today
 
-This is an early build, not the finished product. Right now the only working feature is authentication — a patient can register, log in, and fetch their own profile. Appointments, doctor schedules, payments, and everything else in [`Project Requirements.md`](./Project%20Requirements.md) is planned but not built yet.
+This is an early build, not the finished product. Right now the only working feature is authentication — a patient can register, log in, and fetch their own profile. Appointments, doctor schedules, payments, and everything else in [`Project Requirements.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/Project%20Requirements.md) is planned but not built yet.
 
 Treat this README as a description of what the code *actually does today*, including its rough edges. A few are called out directly in [Known limitations](#known-limitations) further down — read that section before assuming something is broken on your end.
 
