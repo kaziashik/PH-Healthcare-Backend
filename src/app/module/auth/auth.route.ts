@@ -40,6 +40,11 @@ router.get(
 )
 
 router.post("/google", AuthController.googleLogin);
+router.post(
+  "/facebook",
+  validateRequest(userValidation.FacebookLoginZodSchema),
+  AuthController.facebookLogin,
+);
 router.post("/refresh-token", AuthController.refreshToken);
 
 

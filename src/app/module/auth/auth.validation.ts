@@ -87,10 +87,15 @@ const ResetPasswordZodSchema=z.object({
 });
 
 
+const FacebookLoginZodSchema = z.object({
+  accessToken: z.string().min(1, "Facebook access token is required"),
+});
+
 export const userValidation = {
   PatientRegistrationZodSchema,
   PatientEmailVerifyZodSchema,
   LoginZodSchema,
+  FacebookLoginZodSchema,
   ForgetPasswordZodSchema,
   ResetPasswordZodSchema,
   ChangePasswordZodSchema,

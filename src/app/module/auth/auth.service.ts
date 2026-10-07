@@ -15,6 +15,7 @@ import crypto from "crypto";
 import path from "path";
 import ejs from "ejs";
 import {
+  IFacebookLoginPayload,
   IForgotPasswordPayload,
   IGoogleLoginPayload,
   ILoginUserPayload,
@@ -342,16 +343,18 @@ const getMe = async (user: IRequestUser) => {
       doctor: true,
       admin: true,
     },
-    omit: {
-      password: true,
-    },
   });
 
   if (!isUserExists) {
     throw new Error("User not found");
   }
 
-  return isUserExists;
+  const { password, ...safeUser } = isUserExists;
+
+  return {
+    ...safeUser,
+    hasPassword: Boolean(password),
+  };
 };
 
 const refreshToken = async (token: string) => {
@@ -697,6 +700,130 @@ const sendPatientWelcomeEmail = async (name: string, email: string) => {
   });
 };
 
+const issueSessionTokens = (user: {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}) => {
+  const jwtPayload = {
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+
+  const accessToken = jwtUtils.createToken(
+    jwtPayload,
+    config.jwt_access_secret,
+    config.jwt_access_expires_in as SignOptions,
+  );
+
+  const refreshToken = jwtUtils.createToken(
+    jwtPayload,
+    config.jwt_refresh_secret,
+    config.jwt_refresh_expires_in as SignOptions,
+  );
+
+  return { accessToken, refreshToken };
+};
+
+const facebookLogin = async (payload: IFacebookLoginPayload) => {
+  const accessToken = payload.accessToken?.trim();
+  const appId = config.facebook_app_id;
+  const appSecret = config.facebook_app_secret;
+
+  if (!accessToken) {
+    throw new Error("Invalid Or Expired Facebook Token");
+  }
+
+  if (!appId || !appSecret) {
+    throw new Error("Facebook login is not configured");
+  }
+
+  const appToken = `${appId}|${appSecret}`;
+  const debugResponse = await fetch(
+    `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`,
+  );
+  const debugBody = (await debugResponse.json()) as {
+    data?: { is_valid?: boolean; app_id?: string };
+  };
+
+  if (!debugBody.data?.is_valid || String(debugBody.data.app_id) !== appId) {
+    throw new Error("Invalid Or Expired Facebook Token");
+  }
+
+  const profileResponse = await fetch(
+    `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  const profile = (await profileResponse.json()) as {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+
+  if (!profile.id || !profile.name) {
+    throw new Error("Facebook profile could not be read");
+  }
+
+  if (!profile.email) {
+    throw new Error("Facebook email was not shared. Allow email access and try again.");
+  }
+
+  const email = profile.email.trim().toLowerCase();
+  const existingAccount = await prisma.user.findUnique({ where: { email } });
+
+  if (existingAccount && existingAccount.role !== Role.PATIENT) {
+    throw new Error("Facebook login is only available for patients");
+  }
+
+  let user = existingAccount;
+
+  if (user) {
+    if (!user.emailVerified) {
+      throw new Error("Email Not Verified");
+    }
+
+    if (user.status === UserStatus.BLOCKED) {
+      throw new Error("User Is Blocked");
+    }
+
+    if (user.isDeleted || user.status === UserStatus.DELETED) {
+      throw new Error("User Is Deleted");
+    }
+  }
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        name: profile.name,
+        email,
+        role: Role.PATIENT,
+        authProvider: AuthProvider.CREDENTIAL,
+        emailVerified: true,
+        patient: {
+          create: {
+            name: profile.name,
+            email,
+          },
+        },
+      },
+    });
+
+    await sendPatientWelcomeEmail(profile.name, email);
+  }
+
+  if (user.status === UserStatus.BLOCKED) {
+    throw new Error("User Is Blocked");
+  }
+
+  if (user.isDeleted || user.status === UserStatus.DELETED) {
+    throw new Error("User Is Deleted");
+  }
+
+  return issueSessionTokens(user);
+};
+
 const changePassword = async (
   user: IRequestUser,
   payload: IChangePasswordPayload,
@@ -778,6 +905,7 @@ export const AuthService = {
   getMe,
   refreshToken,
   googleLogin,
+  facebookLogin,
   forgotPassword,
   restPassword,
   changePassword,

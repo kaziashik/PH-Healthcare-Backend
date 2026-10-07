@@ -8,23 +8,24 @@ import z, { email } from "zod";
 import config from "../../config";
 
 
+const cookieBase = {
+  httpOnly: true,
+  path: "/",
+  secure: process.env.VERCEL === "1" || config.node_env !== "development",
+  sameSite: (process.env.VERCEL === "1" ? "none" : "lax") as "none" | "lax",
+};
+
 const setAuthCookies = (
   res: Response,
   accessToken: string,
   refreshToken: string,
 ) => {
-  const base = {
-    httpOnly: true,
-    secure: config.node_env === "development" ? false : true,
-    sameSite: "lax" as const,
-  };
-
   res.cookie("accessToken", accessToken, {
-    ...base,
+    ...cookieBase,
     maxAge: 1000 * 60 * 60 * 24,
   });
   res.cookie("refreshToken", refreshToken, {
-    ...base,
+    ...cookieBase,
     maxAge: 1000 * 60 * 60 * 24 * 7,
   });
 };
@@ -164,6 +165,24 @@ const googleLogin = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const facebookLogin = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+  const result = await AuthService.facebookLogin(payload);
+  const { accessToken, refreshToken } = result;
+
+  setAuthCookies(res, accessToken, refreshToken);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "New tokens generated successfully",
+    data: {
+      accessToken,
+      refreshToken,
+    },
+  });
+});
+
 const forgotPassword = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
 
@@ -223,8 +242,8 @@ const setPassword = catchAsync(async (req: Request, res: Response) => {
 });
 
 const logout = catchAsync(async (req: Request, res: Response) => {
-  res.clearCookie("accessToken", { path: "/", sameSite: "lax", httpOnly: true });
-  res.clearCookie("refreshToken", { path: "/", sameSite: "lax", httpOnly: true });
+  res.clearCookie("accessToken", cookieBase);
+  res.clearCookie("refreshToken", cookieBase);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -241,6 +260,7 @@ export const AuthController = {
   getMe,
   refreshToken,
   googleLogin,
+  facebookLogin,
   forgotPassword,
   restPassword,
   changePassword,

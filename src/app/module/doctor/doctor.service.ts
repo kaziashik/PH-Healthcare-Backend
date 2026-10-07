@@ -334,8 +334,16 @@ const getAllDoctors = async (query: IQuery, user?: RequestUser) => {
 	const limit = query.limit ? Number(query.limit) : 10;
 	const page = query.page ? Number(query.page) : 1;
 	const skip = (page - 1) * limit;
-	const sortBy = query.sortBy ? query.sortBy : "createdAt";
-	const sortOrder = query.sortOrder ? query.sortOrder : "desc"
+	const sortableFields = new Set([
+		"createdAt",
+		"name",
+		"consultationFee",
+		"experienceYears",
+	]);
+	const sortBy = sortableFields.has(String(query.sortBy))
+		? String(query.sortBy)
+		: "createdAt";
+	const sortOrder = query.sortOrder === "asc" ? "asc" : "desc";
 
 	const isManager = user?.role === Role.ADMIN || user?.role === Role.SUPER_ADMIN;
 
@@ -366,8 +374,26 @@ const getAllDoctors = async (query: IQuery, user?: RequestUser) => {
 	//filtering
 	if (query.specialization) {
 		andConditions.push({
-			specialization: { equals: query.specialization, mode: "insensitive" },
+			specialization: { contains: query.specialization, mode: "insensitive" },
 		});
+	}
+
+	if (query.maxFee !== undefined && query.maxFee !== "") {
+		const maxFee = Number(query.maxFee);
+		if (!Number.isNaN(maxFee)) {
+			andConditions.push({
+				consultationFee: { lte: maxFee },
+			});
+		}
+	}
+
+	if (query.minExperience !== undefined && query.minExperience !== "") {
+		const minExperience = Number(query.minExperience);
+		if (!Number.isNaN(minExperience)) {
+			andConditions.push({
+				experienceYears: { gte: minExperience },
+			});
+		}
 	}
 
 	if (query.email) {
@@ -446,6 +472,37 @@ const getAllDoctors = async (query: IQuery, user?: RequestUser) => {
 	}
 }
 
+const getDoctorById = async (doctorId: string, user?: RequestUser) => {
+	const doctor = await prisma.doctor.findUnique({
+		where: { id: doctorId },
+		include: {
+			user: {
+				omit: { password: true },
+			},
+		},
+	});
+
+	if (!doctor || doctor.isDeleted) {
+		throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+	}
+
+	const isManager = user?.role === Role.ADMIN || user?.role === Role.SUPER_ADMIN;
+
+	if (!isManager) {
+		const isPublic =
+			doctor.verificationStatus === DoctorVerificationStatus.APPROVED &&
+			doctor.user.status === UserStatus.ACTIVE &&
+			!doctor.user.isDeleted &&
+			doctor.user.emailVerified;
+
+		if (!isPublic) {
+			throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+		}
+	}
+
+	return doctor;
+};
+
 const updateDoctorProfile = async (payload : IUpdateDoctorProfilePayload, user : RequestUser) => {
 	const existingDoctor = await prisma.doctor.findUnique({
 		where: { userId: user.userId },
@@ -469,5 +526,6 @@ export const DoctorServices = {
   verifyDoctorEmail,
   approveDoctor,
   getAllDoctors,
+  getDoctorById,
   updateDoctorProfile
 };

@@ -33,6 +33,10 @@ export interface IGoogleLoginPayload {
   idToken: string;
 }
 
+export interface IFacebookLoginPayload {
+  accessToken: string;
+}
+
 export interface IForgotPasswordPayload {
   email: string;
 }

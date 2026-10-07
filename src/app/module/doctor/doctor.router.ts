@@ -44,6 +44,8 @@ router.get(
 	DoctorController.getAllDoctors,
 );
 
+router.get("/:doctorId", optionalAuth, DoctorController.getDoctorById);
+
 router.patch(
 	"/update-my-profile",
 	auth(Role.DOCTOR),

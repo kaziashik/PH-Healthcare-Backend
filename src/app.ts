@@ -14,6 +14,7 @@ import { DoctorRoutes } from './app/module/doctor/doctor.router'
 import { ScheduleRoutes } from './app/module/shedule/shedule.route'
 import { PaymentRoutes } from './app/module/payment/payment.route'
 import { PrescriptionRoutes } from './app/module/prescription/prescription.route'
+import { ContactRoutes } from './app/module/contact/contact.route'
 
 
 
@@ -43,6 +44,7 @@ app.use("/api/v1/doctor", DoctorRoutes);
 
 app.use("/api/v1/schedule", ScheduleRoutes);
 app.use("/api/v1/payment", PaymentRoutes);
+app.use("/api/v1/contact", ContactRoutes);
 
 app.get("/test",async (req: Request, res: Response,next: NextFunction) => {
 try {

@@ -86,6 +86,17 @@ const getAllDoctors = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+const getDoctorById = catchAsync(async (req: Request, res: Response) => {
+	const doctorId = String(req.params.doctorId);
+	const data = await DoctorServices.getDoctorById(doctorId, req.user);
+	sendResponse(res, {
+		statusCode: httpStatus.OK,
+		success: true,
+		message: "Doctor Retrieved Successfully",
+		data,
+	});
+});
+
 const updateDoctorProfile = catchAsync(
 	async (req: Request, res: Response) => {
 		const payload = req.body;
@@ -110,5 +121,6 @@ export const DoctorController = {
 	verifyDoctorEmail,
 	approveDoctor,
 	getAllDoctors,
+	getDoctorById,
 	updateDoctorProfile
 };

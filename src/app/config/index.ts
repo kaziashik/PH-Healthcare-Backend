@@ -17,6 +17,8 @@ export default {
     jwt_access_expires_in: process.env.JWT_ACCESS_EXPIRES_IN!,
     jwt_refresh_expires_in: process.env.JWT_REFRESH_EXPIRES_IN!,
     google_client_id: process.env.GOOGLE_CLIENT_ID!,
+    facebook_app_id: process.env.FACEBOOK_APP_ID,
+    facebook_app_secret: process.env.FACEBOOK_APP_SECRET,
 
 
     super_admin_name : process.env.SUPER_ADMIN_NAME!,
