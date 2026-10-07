@@ -4,6 +4,7 @@ export interface IApplyAsDoctorPayload {
     user: {
         name: string;
         email: string;
+        password: string;
     };
     doctor: {
         address?: string;

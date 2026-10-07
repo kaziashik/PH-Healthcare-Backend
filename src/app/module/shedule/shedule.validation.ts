@@ -12,4 +12,5 @@ export const UpdateScheduleValidationZodSchema = z
         startDateTime: z.coerce.date("Invalid Start Date Time").optional(),
         endDateTime: z.coerce.date("Invalid End Date Time").optional(),
         meetingLink: z.url("Invalid Meeting Link").trim().optional(),
+        status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
     })

@@ -5,6 +5,17 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
 		name: z.string().trim().min(2, "Name must be at least 2 characters long"),
 
 		email: z.email("Invalid email address").trim().toLowerCase(),
+
+		password: z
+			.string()
+			.min(8)
+			.regex(/[A-Z]/, "Password must contain at least one uppercase letter.")
+			.regex(/[a-z]/, "Password must contain at least one lowercase letter.")
+			.regex(/[0-9]/, "Password must contain at least one number.")
+			.regex(
+				/[^A-Za-z0-9]/,
+				"Password must contain at least one special character.",
+			),
 	}),
 
 	doctor: z.object({
@@ -43,6 +54,11 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
 			.min(5, "Contact number is invalid")
 			.optional(),
 	}),
+});
+
+export const VerifyDoctorEmailValidationZodSchema = z.object({
+	email: z.email("Invalid email address").trim().toLowerCase(),
+	otp: z.string().length(6, "OTP must be 6 digits"),
 });
 
 export const UpdateDoctorProfileValidationZodSchema = z.object({

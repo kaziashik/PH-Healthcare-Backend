@@ -4,6 +4,7 @@ import {
   Role,
   UserStatus,
   AuthProvider,
+  DoctorVerificationStatus,
 } from "../../../generated/prisma/enums";
 import config from "../../config";
 import { prisma } from "../../lib/prisma";
@@ -19,7 +20,9 @@ import {
   ILoginUserPayload,
   IRegisterPatientPayload,
   IRequestUser,
+  IChangePasswordPayload,
   IResetPasswordPayload,
+  ISetPasswordPayload,
   IVerifyEmailPayload,
 } from "./auth.interface";
 import { redisClient } from "../../lib/redits";
@@ -40,10 +43,10 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
   const expirationSeconds = 5 * 60;
 
   const otpkey = `patient-registration-otp:${email}`;
-  const otpvalue = crypto.randomInt(100000, 1000000);
+  const otpvalue = crypto.randomInt(100000, 1000000).toString();
 
  if(config.node_env==="development"){
-  console.log(`[dev]OTP $ {email}: ${otpvalue}`);
+  console.log(`[dev] OTP ${email}: ${otpvalue}`);
  }
 
 
@@ -83,14 +86,14 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
     name,
     email,
     otpvalue,
-    expirationSeconds,
+    expirationSeconds: expirationSeconds / 60,
   };
   const html = await ejs.renderFile(tempatePath, templateData);
 
   await transporter.sendMail({
     from: config.email_sender,
     to: email,
-    subject: "Password changed",
+    subject: "Verify your email",
     // text: `Your OTP is ${otp}`,
 
     // html : `<h1>Your password is changed <h1>`
@@ -177,7 +180,7 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
     throw new Error("Invalid OTP");
   }
 
-  if (redisOtp !== otp) {
+  if (String(redisOtp) !== String(otp)) {
     throw new Error("OTP Does Not Match");
   }
 
@@ -206,6 +209,12 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
           name: patientPayload.name,
           email: patientPayload.email,
           contactNumber: patientPayload?.patient?.contactNumber || "",
+          gender: patientPayload?.patient?.gender,
+          dateOfBirth: patientPayload?.patient?.dateOfBirth
+            ? new Date(patientPayload.patient.dateOfBirth)
+            : undefined,
+          bloodGroup: patientPayload?.patient?.bloodGroup,
+          medicalHistory: patientPayload?.patient?.medicalHistory,
         },
       },
     },
@@ -215,25 +224,7 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
 
   await redisClient.del(patientRegistrationKey);
 
-  const tempatePath = path.join(
-    process.cwd(),
-    "src/app/module/templates/patient-welcome-email.ejs",
-  );
-
-  const templateData = {
-    name: createdUser.name,
-  };
-
-  const html = await ejs.renderFile(tempatePath, templateData);
-
-  await transporter.sendMail({
-    from: config.email_sender,
-    to: email,
-    subject: "Welcome To PH Healthcare System",
-    // text : `Your OTP is ${otp}`
-    // html: `<h1>Your OTP is ${otp}</h1>`
-    html,
-  });
+  await sendPatientWelcomeEmail(createdUser.name, email);
 
   const { patient, ...user } = createdUser;
   const jwtPayload = {
@@ -269,6 +260,11 @@ const loginUser = async (payload: ILoginUserPayload) => {
 
   const user = await prisma.user.findUnique({
     where: { email },
+    include: {
+      doctor: {
+        select: { verificationStatus: true },
+      },
+    },
   });
 
   if (!user) {
@@ -283,9 +279,9 @@ const loginUser = async (payload: ILoginUserPayload) => {
     throw new Error("User is deleted");
   }
 
-  if (user.password === null && user.googleId !== null) {
+  if (user.password === null) {
     throw new Error(
-      "User Alredy Registered With Google Login. Please Use Google Login",
+      "This account has no password yet. Use Google login, or set a password while logged in.",
     );
   }
 
@@ -296,6 +292,19 @@ const loginUser = async (payload: ILoginUserPayload) => {
 
   if (!isPasswordMatched) {
     throw new Error("Invalid credentials");
+  }
+
+  if (!user.emailVerified) {
+    throw new Error("Email is not verified");
+  }
+
+  if (
+    user.role === Role.DOCTOR &&
+    user.doctor?.verificationStatus !== DoctorVerificationStatus.APPROVED
+  ) {
+    throw new Error(
+      "Your doctor application is not approved yet. You cannot log in.",
+    );
   }
 
   const jwtPayload = {
@@ -330,6 +339,8 @@ const getMe = async (user: IRequestUser) => {
     },
     include: {
       patient: true,
+      doctor: true,
+      admin: true,
     },
     omit: {
       password: true,
@@ -417,9 +428,19 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
     throw new Error("Google Email User Name Not Found");
   }
 
+  const email = googleIdTokenPayload.email.trim().toLowerCase();
+
+  const existingAccount = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (existingAccount && existingAccount.role !== Role.PATIENT) {
+    throw new Error("Google login is only available for patients");
+  }
+
   const ifPatientExistWithGoogleAuth = await prisma.user.findUnique({
     where: {
-      email: googleIdTokenPayload.email,
+      email,
       role: Role.PATIENT,
       googleId: googleIdTokenPayload.sub,
     },
@@ -430,7 +451,7 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
   if (!ifPatientExistWithGoogleAuth) {
     const ifPatientExistWithCredentials = await prisma.user.findUnique({
       where: {
-        email: googleIdTokenPayload.email,
+        email,
         role: Role.PATIENT,
         authProvider: AuthProvider.CREDENTIAL,
       },
@@ -462,11 +483,10 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
         },
       });
     } else {
-      // Google Register
       user = await prisma.user.create({
         data: {
           name: googleIdTokenPayload.name,
-          email: googleIdTokenPayload.email,
+          email,
           role: Role.PATIENT,
           googleId: googleIdTokenPayload.sub,
           authProvider: AuthProvider.GOOGLE,
@@ -474,11 +494,13 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
           patient: {
             create: {
               name: googleIdTokenPayload.name,
-              email: googleIdTokenPayload.email,
+              email,
             },
           },
         },
       });
+
+      await sendPatientWelcomeEmail(googleIdTokenPayload.name, email);
     }
   }
 
@@ -520,7 +542,7 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
 };
 
 const forgotPassword = async (payload: IForgotPasswordPayload) => {
-  const { email } = payload;
+  const email = payload.email.trim().toLowerCase();
   const isUserExists = await prisma.user.findUnique({
     where: {
       email,
@@ -538,16 +560,18 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
     throw new Error("user is Deleted");
   }
 
-  if (isUserExists.googleId && isUserExists.authProvider === "GOOGLE") {
-    throw new Error("user Has Account with Google");
+  if (!isUserExists.password) {
+    throw new Error(
+      "This account has no password yet. Log in with Google and set a password first.",
+    );
   }
 
   if (!isUserExists.emailVerified) {
     throw new Error("User Not Verified");
   }
 
-  const otp = crypto.randomInt(100000, 1000000);
-  const key = `forget-password-otp: ${isUserExists.email}`;
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  const key = `forget-password-otp:${isUserExists.email}`;
   const expirationSeconds = 5 * 60;
 
   await redisClient.set(key, otp, {
@@ -582,7 +606,8 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
 };
 
 const restPassword = async (payload: IResetPasswordPayload) => {
-  const { email, otp, newPassword } = payload;
+  const { otp, newPassword } = payload;
+  const email = payload.email.trim().toLowerCase();
   const isUserExists = await prisma.user.findUnique({
     where: {
       email,
@@ -600,21 +625,23 @@ const restPassword = async (payload: IResetPasswordPayload) => {
     throw new Error("user is Deleted");
   }
 
-  if (isUserExists.googleId && isUserExists.authProvider === "GOOGLE") {
-    throw new Error("user Has Account with Google");
+  if (!isUserExists.password) {
+    throw new Error(
+      "This account has no password yet. Log in with Google and set a password first.",
+    );
   }
 
   if (!isUserExists.emailVerified) {
     throw new Error("User Not Verified");
   }
-  const key = `forget-password-otp: ${isUserExists.email}`;
+  const key = `forget-password-otp:${isUserExists.email}`;
 
   const redisOtp = await redisClient.get(key);
 
   if (!redisOtp) {
     throw new Error("Invalid OTP");
   }
-  if (redisOtp !== otp) {
+  if (String(redisOtp) !== String(otp)) {
     throw new Error("OTP Does Not match");
   }
 
@@ -629,6 +656,7 @@ const restPassword = async (payload: IResetPasswordPayload) => {
     },
     data: {
       password: hashNewpassword,
+      needPasswordChange: false,
     },
   });
 
@@ -654,6 +682,95 @@ const restPassword = async (payload: IResetPasswordPayload) => {
   });
 };
 
+const sendPatientWelcomeEmail = async (name: string, email: string) => {
+  const templatePath = path.join(
+    process.cwd(),
+    "src/app/module/templates/patient-welcome-email.ejs",
+  );
+  const html = await ejs.renderFile(templatePath, { name });
+
+  await transporter.sendMail({
+    from: config.email_sender,
+    to: email,
+    subject: "Welcome To PH Healthcare System",
+    html,
+  });
+};
+
+const changePassword = async (
+  user: IRequestUser,
+  payload: IChangePasswordPayload,
+) => {
+  const existingUser = await prisma.user.findUnique({
+    where: { id: user.userId },
+  });
+
+  if (!existingUser) {
+    throw new Error("User not found");
+  }
+
+  if (!existingUser.password) {
+    throw new Error(
+      "This account has no password yet. Use set password instead.",
+    );
+  }
+
+  const isCurrentPasswordMatched = await bcrypt.compare(
+    payload.currentPassword,
+    existingUser.password,
+  );
+
+  if (!isCurrentPasswordMatched) {
+    throw new Error("Current password is incorrect");
+  }
+
+  const hashedPassword = await bcrypt.hash(
+    payload.newPassword,
+    Number(config.bcrypt_salt_rounds) || 8,
+  );
+
+  await prisma.user.update({
+    where: { id: existingUser.id },
+    data: {
+      password: hashedPassword,
+      needPasswordChange: false,
+    },
+  });
+};
+
+const setPassword = async (user: IRequestUser, payload: ISetPasswordPayload) => {
+  if (user.role !== Role.PATIENT) {
+    throw new Error("Set password is only available for patients");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { id: user.userId },
+  });
+
+  if (!existingUser) {
+    throw new Error("User not found");
+  }
+
+  if (existingUser.password) {
+    throw new Error(
+      "This account already has a password. Use change password instead.",
+    );
+  }
+
+  const hashedPassword = await bcrypt.hash(
+    payload.newPassword,
+    Number(config.bcrypt_salt_rounds) || 8,
+  );
+
+  await prisma.user.update({
+    where: { id: existingUser.id },
+    data: {
+      password: hashedPassword,
+      needPasswordChange: false,
+    },
+  });
+};
+
 export const AuthService = {
   registerPatient,
   verifyPatientEmail,
@@ -663,4 +780,6 @@ export const AuthService = {
   googleLogin,
   forgotPassword,
   restPassword,
+  changePassword,
+  setPassword,
 };

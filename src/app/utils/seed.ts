@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { Role } from "../../generated/prisma/enums";
+import { DoctorVerificationStatus, Role } from "../../generated/prisma/enums";
 import { prisma } from "../lib/prisma";
 import config from "../config";
 
@@ -12,6 +12,16 @@ export const seedSuperAdmon = async () => {
     });
 
     if (isSuperAdmonExist) {
+      await prisma.admin.upsert({
+        where: { userId: isSuperAdmonExist.id },
+        update: {},
+        create: {
+          name: isSuperAdmonExist.name,
+          organizationEmail: isSuperAdmonExist.email,
+          personalEmail: isSuperAdmonExist.email,
+          userId: isSuperAdmonExist.id,
+        },
+      });
       console.log("Super Admin Exists!");
       return
     }
@@ -37,6 +47,13 @@ export const seedSuperAdmon = async () => {
         role: Role.SUPER_ADMIN,
         needPasswordChange: false,
         emailVerified: true,
+        admin: {
+          create: {
+            name,
+            organizationEmail: email,
+            personalEmail: email,
+          },
+        },
       },
     });
 
@@ -66,6 +83,16 @@ export const seedTesterAdmin = async () => {
         });
 
         if (isTesterAdminExist) {
+            await prisma.admin.upsert({
+                where: { userId: isTesterAdminExist.id },
+                update: {},
+                create: {
+                    name: isTesterAdminExist.name,
+                    organizationEmail: isTesterAdminExist.email,
+                    personalEmail: isTesterAdminExist.email,
+                    userId: isTesterAdminExist.id,
+                },
+            });
             console.log("Tester Admin Already Exists!");
             return;
         }
@@ -87,7 +114,14 @@ export const seedTesterAdmin = async () => {
                 password: hashedPassword,
                 role: Role.ADMIN,
                 needPasswordChange: false,
-                emailVerified: true
+                emailVerified: true,
+                admin: {
+                    create: {
+                        name,
+                        organizationEmail: email,
+                        personalEmail: email,
+                    },
+                },
             }
         })
 
@@ -121,13 +155,32 @@ export const seedTesterDoctor = async () => {
         });
 
         if (isTesterDoctorExist) {
+            const doctorProfile = await prisma.doctor.findUnique({
+                where: { userId: isTesterDoctorExist.id },
+            });
+
+            if (!doctorProfile) {
+                await prisma.doctor.create({
+                    data: {
+                        name: isTesterDoctorExist.name,
+                        email: isTesterDoctorExist.email,
+                        specialization: "General Medicine",
+                        licenseNumber: "SEED-TEST-DOCTOR",
+                        qualifications: "MBBS",
+                        experienceYears: 1,
+                        verificationStatus: DoctorVerificationStatus.APPROVED,
+                        userId: isTesterDoctorExist.id,
+                    },
+                });
+            }
+
             console.log("Tester Doctor Already Exists!");
             return;
         }
 
         const name = config.tester_doctor_name
         const email = config.tester_doctor_email
-        const password = config.tester_admin_password
+        const password = config.tester_doctor_password
 
         if (!name || !email || !password) {
             throw new Error("Tester Doctor Name , Email, Password Missing In Env File!!!")
@@ -142,7 +195,18 @@ export const seedTesterDoctor = async () => {
                 password: hashedPassword,
                 role: Role.DOCTOR,
                 needPasswordChange: false,
-                emailVerified: true
+                emailVerified: true,
+                doctor: {
+                    create: {
+                        name,
+                        email,
+                        specialization: "General Medicine",
+                        licenseNumber: "SEED-TEST-DOCTOR",
+                        qualifications: "MBBS",
+                        experienceYears: 1,
+                        verificationStatus: DoctorVerificationStatus.APPROVED,
+                    },
+                },
             }
         })
 

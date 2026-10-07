@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import type { UploadApiResponse } from "cloudinary";
-import { DoctorVerificationStatus, Role } from "../../../generated/prisma/enums";
+import { DoctorVerificationStatus, Role, UserStatus } from "../../../generated/prisma/enums";
 import config from "../../config";
 import { cloudinary } from "../../lib/cloudinary";
 import { prisma } from "../../lib/prisma";
@@ -29,6 +29,17 @@ const applyAsDoctor = async (
 
   if (isUserExists) {
     throw new Error("User Already Exists With This Email");
+  }
+
+  const licenseTaken = await prisma.doctor.findUnique({
+    where: { licenseNumber: payload.doctor.licenseNumber },
+  });
+
+  if (licenseTaken) {
+    throw new AppError(
+      httpStatus.CONFLICT,
+      "A Doctor Application Already Uses This License Number",
+    );
   }
 
   const resumeUploadResult = await new Promise<UploadApiResponse>(
@@ -85,43 +96,16 @@ const applyAsDoctor = async (
 
   console.log({ additionalFilesUploadResults });
 
-  const randomDoctorPassword = Math.random().toString(36).slice(-8);
-
+  const email = payload.user.email.trim().toLowerCase();
   const hashedPassword = await bcrypt.hash(
-    randomDoctorPassword,
-    Number(config.bcrypt_salt_rounds),
+    payload.user.password,
+    Number(config.bcrypt_salt_rounds) || 8,
   );
 
-  const doctorApplication = await prisma.user.create({
-    data: {
-      ...payload.user,
-      password: hashedPassword,
-      role: Role.DOCTOR,
-      needPasswordChange: true,
-      doctor: {
-        create: {
-          name: payload.user.name,
-          email: payload.user.email,
-          ...payload.doctor,
-          resume: resumeUploadResult.secure_url,
-          resumePublicId: resumeUploadResult.public_id,
-          additionalFiles: additionalFilesUploadResults.map((file) => ({
-            url: file.secure_url,
-            publicId: file.public_id,
-          })),
-        },
-      },
-    },
-
-    include: {
-      doctor: true,
-    },
-  });
-
-  const expirationSeconds = 60 * 60;
-
-  const otpKey = `doctor-application-otp:${payload.user.email}`;
+  const expirationSeconds = 5 * 60;
+  const otpKey = `doctor-application-otp:${email}`;
   const otpValue = crypto.randomInt(100000, 1000000).toString();
+  const applicationKey = `doctor-application-data:${email}`;
 
   await redisClient.set(otpKey, otpValue, {
     expiration: {
@@ -130,6 +114,36 @@ const applyAsDoctor = async (
     },
   });
 
+  await redisClient.set(
+    applicationKey,
+    JSON.stringify({
+      user: {
+        name: payload.user.name,
+        email,
+        password: hashedPassword,
+      },
+      doctor: {
+        ...payload.doctor,
+        resume: resumeUploadResult.secure_url,
+        resumePublicId: resumeUploadResult.public_id,
+        additionalFiles: additionalFilesUploadResults.map((file) => ({
+          url: file.secure_url,
+          publicId: file.public_id,
+        })),
+      },
+    }),
+    {
+      expiration: {
+        type: "EX",
+        value: expirationSeconds,
+      },
+    },
+  );
+
+  if (config.node_env === "development") {
+    console.log(`[dev] OTP ${email}: ${otpValue}`);
+  }
+
   const tempatePath = path.join(
     process.cwd(),
     "src/app/module/templates/registration-user-otp.ejs",
@@ -137,7 +151,7 @@ const applyAsDoctor = async (
 
   const templateData = {
   name: payload.user.name,
-  email: payload.user.email,
+  email,
   otpvalue: otpValue,
   expirationSeconds: expirationSeconds / 60,
 };
@@ -146,12 +160,12 @@ const applyAsDoctor = async (
 
   await transporter.sendMail({
     from: config.email_sender,
-    to: payload.user.email,
+    to: email,
     subject: "Doctor Application - Email Verification",
     html,
   });
 
-  return doctorApplication;
+  return { email };
 };
 
 const verifyDoctorEmail=async (payload: IVerifyDoctorEmailPayload)=>{
@@ -159,20 +173,15 @@ const verifyDoctorEmail=async (payload: IVerifyDoctorEmailPayload)=>{
 	const email=payload.email.trim().toLowerCase();
 
 	const existingUser=await prisma.user.findUnique({
-		where: {email,
-			role: Role.DOCTOR
-		}
+		where: {email}
 	})
 
-    	if (!existingUser) {
-		throw new AppError(
-			httpStatus.NOT_FOUND,
-			"Doctor Application Not Found. Please Apply Again.",
-		);
+    if (existingUser?.emailVerified && existingUser.role === Role.DOCTOR) {
+		throw new AppError(httpStatus.CONFLICT, "Email Already Verified");
 	}
 
-    if (existingUser.emailVerified) {
-		throw new AppError(httpStatus.CONFLICT, "Email Already Verified");
+	if (existingUser && existingUser.role !== Role.DOCTOR) {
+		throw new AppError(httpStatus.CONFLICT, "User Already Exists With This Email");
 	}
 
 	const otpKey = `doctor-application-otp:${email}`;
@@ -186,18 +195,71 @@ const verifyDoctorEmail=async (payload: IVerifyDoctorEmailPayload)=>{
 		);
 	}
 
-	if (redisOtp !== otp) {
+	if (String(redisOtp) !== String(otp)) {
 		throw new AppError(httpStatus.BAD_REQUEST, "OTP Does Not Match");
 	}
 
-	await redisClient.del(otpKey);
+	const applicationKey = `doctor-application-data:${email}`;
+	const redisApplication = await redisClient.get(applicationKey);
 
-	const verifiedUser = await prisma.user.update({
-		where: { id: existingUser.id },
-		data: { emailVerified: true },
+	if (existingUser?.role === Role.DOCTOR && !existingUser.emailVerified) {
+		await redisClient.del(otpKey);
+		const verifiedUser = await prisma.user.update({
+			where: { id: existingUser.id },
+			data: { emailVerified: true },
+			omit: { password: true },
+			include: { doctor: true },
+		});
+		return verifiedUser;
+	}
+
+	if (!redisApplication) {
+		throw new AppError(
+			httpStatus.NOT_FOUND,
+			"Doctor Application Not Found. Please Apply Again.",
+		);
+	}
+
+	const application = JSON.parse(redisApplication) as IApplyAsDoctorPayload & {
+		doctor: IApplyAsDoctorPayload["doctor"] & {
+			resume?: string;
+			resumePublicId?: string;
+			additionalFiles?: { url: string; publicId: string }[];
+		};
+	};
+
+	const verifiedUser = await prisma.user.create({
+		data: {
+			name: application.user.name,
+			email: application.user.email,
+			password: application.user.password,
+			role: Role.DOCTOR,
+			emailVerified: true,
+			needPasswordChange: false,
+			doctor: {
+				create: {
+					name: application.user.name,
+					email: application.user.email,
+					address: application.doctor.address,
+					specialization: application.doctor.specialization,
+					licenseNumber: application.doctor.licenseNumber,
+					qualifications: application.doctor.qualifications,
+					experienceYears: Number(application.doctor.experienceYears),
+					bio: application.doctor.bio,
+					consultationFee: application.doctor.consultationFee,
+					contactNumber: application.doctor.contactNumber,
+					resume: application.doctor.resume,
+					resumePublicId: application.doctor.resumePublicId,
+					additionalFiles: application.doctor.additionalFiles,
+					verificationStatus: DoctorVerificationStatus.PENDING,
+				},
+			},
+		},
 		omit: { password: true },
 		include: { doctor: true },
 	});
+
+	await redisClient.del([otpKey, applicationKey]);
 
 	return verifiedUser
 }
@@ -287,13 +349,15 @@ const html = await ejs.renderFile(templatePath, templateData);
 
 }
 
-const getAllDoctors = async (query: IQuery) => {
+const getAllDoctors = async (query: IQuery, user?: RequestUser) => {
 
 	const limit = query.limit ? Number(query.limit) : 10;
 	const page = query.page ? Number(query.page) : 1;
 	const skip = (page - 1) * limit;
 	const sortBy = query.sortBy ? query.sortBy : "createdAt";
 	const sortOrder = query.sortOrder ? query.sortOrder : "desc"
+
+	const isManager = user?.role === Role.ADMIN || user?.role === Role.SUPER_ADMIN;
 
 	const andConditions: DoctorWhereInput[] = []
 
@@ -338,13 +402,24 @@ const getAllDoctors = async (query: IQuery) => {
 		});
 	}
 
-	if (query.verificationStatus) {
+	if (query.verificationStatus && isManager) {
 		andConditions.push({
 			verificationStatus: query.verificationStatus as DoctorVerificationStatus,
 		});
 	}
 
 	andConditions.push({ isDeleted: false });
+
+	if (!isManager) {
+		andConditions.push({ verificationStatus: DoctorVerificationStatus.APPROVED });
+		andConditions.push({
+			user: {
+				status: UserStatus.ACTIVE,
+				isDeleted: false,
+				emailVerified: true,
+			},
+		});
+	}
 
 	const allDoctors = await prisma.doctor.findMany({
 		where : {

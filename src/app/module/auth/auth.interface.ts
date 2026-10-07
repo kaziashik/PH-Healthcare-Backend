@@ -10,8 +10,12 @@ export interface IRegisterPatientPayload {
   name: string;
   email: string;
   password: string;
-  patient: {
+  patient?: {
     contactNumber?: string;
+    gender?: "MALE" | "FEMALE" | "OTHER";
+    dateOfBirth?: Date | string;
+    bloodGroup?: string;
+    medicalHistory?: string;
   };
 }
 export interface IVerifyEmailPayload {
@@ -37,4 +41,13 @@ export interface IResetPasswordPayload {
   email: string;
   newPassword: string;
   otp: string;
+}
+
+export interface IChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ISetPasswordPayload {
+  newPassword: string;
 }

@@ -49,6 +49,20 @@ router.post("/refresh-token", AuthController.refreshToken);
 router.post("/forgot-password",validateRequest(userValidation.ForgetPasswordZodSchema), AuthController.forgotPassword);
 router.post("/reset-password",validateRequest(userValidation.ResetPasswordZodSchema), AuthController.restPassword);
 
+router.post(
+  "/change-password",
+  auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
+  validateRequest(userValidation.ChangePasswordZodSchema),
+  AuthController.changePassword,
+);
+
+router.post(
+  "/set-password",
+  auth(Role.PATIENT),
+  validateRequest(userValidation.SetPasswordZodSchema),
+  AuthController.setPassword,
+);
+
 
 router.post("/logout", AuthController.logout);
 

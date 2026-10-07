@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { upload } from "../../lib/multer";
 import { DoctorController } from "./doctor.controller";
-import { auth } from "../../middleware/checkAuth";
+import { auth, optionalAuth } from "../../middleware/checkAuth";
 import { Role } from "../../../generated/prisma/enums";
 import { validateRequest } from "../../middleware/validateRequest";
-import { UpdateDoctorProfileValidationZodSchema } from "./doctor.validation";
+import { UpdateDoctorProfileValidationZodSchema, VerifyDoctorEmailValidationZodSchema } from "./doctor.validation";
 
 const router = Router();
 
@@ -27,6 +27,7 @@ router.post(
 
 router.post(
 	"/apply-as-doctor/verify-email",
+	validateRequest(VerifyDoctorEmailValidationZodSchema),
 	DoctorController.verifyDoctorEmail,
 );
 
@@ -38,7 +39,7 @@ router.post(
 
 router.get(
 	"/all-doctors",
-	
+	optionalAuth,
 	DoctorController.getAllDoctors,
 );
 

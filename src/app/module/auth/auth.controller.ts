@@ -2,11 +2,32 @@ import { Request, Response } from "express";
 import httpStatus from "http-status";
 import { catchAsync } from "../../utils/catchAsync";
 import { sendResponse } from "../../utils/sendResponse";
-import { IRequestUser } from "./auth.interface";
+import { IChangePasswordPayload, IRequestUser, ISetPasswordPayload } from "./auth.interface";
 import { AuthService } from "./auth.service";
 import z, { email } from "zod";
 import config from "../../config";
 
+
+const setAuthCookies = (
+  res: Response,
+  accessToken: string,
+  refreshToken: string,
+) => {
+  const base = {
+    httpOnly: true,
+    secure: config.node_env === "development" ? false : true,
+    sameSite: "lax" as const,
+  };
+
+  res.cookie("accessToken", accessToken, {
+    ...base,
+    maxAge: 1000 * 60 * 60 * 24,
+  });
+  res.cookie("refreshToken", refreshToken, {
+    ...base,
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  });
+};
 
 const registerPatient = catchAsync(async (req: Request, res: Response) => {
  // const payload = PatientValidation.PatientRegistrationZodSchema.safeParse(req.body);
@@ -50,18 +71,7 @@ const verifyPatientEmail = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.verifyPatientEmail(payload);
   const { accessToken, refreshToken, user, patient } = result;
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: config.node_env === "development" ? false : true,
-    sameSite: "lax",
-    maxAge: 1000 * 60 * 60 * 24,
-  });
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: config.node_env === "development" ? false : true,
-    sameSite: "lax",
-    maxAge: 1000 * 60 * 60 * 24 * 7,
-  });
+  setAuthCookies(res, accessToken, refreshToken);
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
@@ -77,18 +87,7 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.loginUser(payload);
   const { accessToken, refreshToken } = result;
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure:  config.node_env==="development"? false : true,
-		sameSite: config.node_env==="development"? "lax" : "lax",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-  });
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure:  config.node_env==="development"? false : true,
-		sameSite: config.node_env==="development"? "lax" : "lax",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  });
+  setAuthCookies(res, accessToken, refreshToken);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -129,18 +128,7 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.refreshToken(req.cookies.refreshToken);
   const { accessToken, refreshToken: newRefreshToken } = result;
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-  });
-  res.cookie("refreshToken", newRefreshToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  });
+  setAuthCookies(res, accessToken, newRefreshToken);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -160,18 +148,7 @@ const googleLogin = catchAsync(async (req: Request, res: Response) => {
 
   const { accessToken, refreshToken } = result;
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-  });
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  });
+  setAuthCookies(res, accessToken, refreshToken);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -215,6 +192,34 @@ const restPassword = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const changePassword = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as unknown as IRequestUser;
+  const payload = req.body as IChangePasswordPayload;
+
+  await AuthService.changePassword(user, payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Password changed successfully",
+    data: null,
+  });
+});
+
+const setPassword = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as unknown as IRequestUser;
+  const payload = req.body as ISetPasswordPayload;
+
+  await AuthService.setPassword(user, payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Password set successfully",
+    data: null,
+  });
+});
+
 const logout = catchAsync(async (req: Request, res: Response) => {
   res.clearCookie("accessToken", { path: "/", sameSite: "lax", httpOnly: true });
   res.clearCookie("refreshToken", { path: "/", sameSite: "lax", httpOnly: true });
@@ -236,5 +241,7 @@ export const AuthController = {
   googleLogin,
   forgotPassword,
   restPassword,
+  changePassword,
+  setPassword,
   logout
 };

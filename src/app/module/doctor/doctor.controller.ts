@@ -32,7 +32,7 @@ const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
 	sendResponse(res, {
 		statusCode: httpStatus.OK,
 		success: true,
-		message: "Applied As Doctor Successfuly",
+		message: "Verification OTP Sent",
 		data: result,
 	});
 });
@@ -46,7 +46,7 @@ const verifyDoctorEmail = catchAsync(async (req: Request, res: Response) => {
 	sendResponse(res, {
 		statusCode: httpStatus.OK,
 		success: true,
-		message: "Doctor Email Verified Successfully",
+		message: "Email verified. Your application is pending admin approval.",
 		data: result,
 	});
 });
@@ -67,7 +67,7 @@ const approveDoctor = catchAsync(async (req: Request, res: Response) => {
 
 
 const getAllDoctors = catchAsync(async (req: Request, res: Response) => {
-	const {data, meta} = await DoctorServices.getAllDoctors(req.query)
+	const {data, meta} = await DoctorServices.getAllDoctors(req.query, req.user)
 	sendResponse(res, {
 		statusCode: httpStatus.OK,
 		success: true,

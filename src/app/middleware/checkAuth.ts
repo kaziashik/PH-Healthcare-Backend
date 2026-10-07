@@ -67,6 +67,34 @@ export const auth = (...requiredRoles: Role[]) => {
             throw new Error("Your account has been blocked. Please contact support.");
         }
 
+        if (!user.emailVerified) {
+            throw new Error("Email is not verified.");
+        }
+
+        if (user.role === Role.DOCTOR) {
+            const doctor = await prisma.doctor.findUnique({
+                where: { userId: user.id },
+                select: { verificationStatus: true },
+            });
+
+            if (!doctor || doctor.verificationStatus !== "APPROVED") {
+                throw new Error("Your doctor application is not approved yet. You cannot log in.");
+            }
+        }
+
+        if (user.needPasswordChange) {
+            const url = req.originalUrl.split("?")[0];
+            const passwordChangeStillAllowed =
+                url.endsWith("/change-password") ||
+                url.endsWith("/logout") ||
+                url.endsWith("/set-password") ||
+                url.endsWith("/me");
+
+            if (!passwordChangeStillAllowed) {
+                throw new Error("You must change your password before continuing.");
+            }
+        }
+
         req.user = {
             email,
             name,
@@ -79,3 +107,49 @@ export const auth = (...requiredRoles: Role[]) => {
     }
     )
 }
+
+export const optionalAuth = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    const token = req.cookies.accessToken ?
+        req.cookies.accessToken
+        :
+        req.headers.authorization?.startsWith("Bearer ") ?
+            req.headers.authorization?.split(" ")[1]
+            : req.headers.authorization;
+
+    if (!token) {
+        next();
+        return;
+    }
+
+    const verifiedToken = jwtUtils.verifyToken(token, config.jwt_access_secret);
+
+    if (!verifiedToken.success) {
+        next();
+        return;
+    }
+
+    const { email, name, userId, role } = verifiedToken.data as JwtPayload;
+
+    const user = await prisma.user.findUnique({
+        where: {
+            id: userId,
+            email,
+            name,
+            role
+        }
+    });
+
+    if (!user || user.status === "BLOCKED" || user.isDeleted || user.status === "DELETED" || user.needPasswordChange) {
+        next();
+        return;
+    }
+
+    req.user = {
+        email,
+        name,
+        userId,
+        role
+    }
+
+    next();
+})

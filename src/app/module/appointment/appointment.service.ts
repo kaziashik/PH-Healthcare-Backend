@@ -21,7 +21,7 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 	const transactionResult = await prisma.$transaction(async (tx) => {
 		// business logic
 
-		const patient = await prisma.patient.findUnique({
+		const patient = await tx.patient.findUnique({
 			where: { userId: user.userId },
 		});
 
@@ -29,7 +29,7 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 			throw new AppError(httpStatus.NOT_FOUND, "Patient Profile Not Found");
 		}
 
-		const schedule = await prisma.schedule.findUnique({
+		const schedule = await tx.schedule.findUnique({
 			where: { id: payload.scheduleId },
 			include: { doctor: true },
 		});
@@ -67,19 +67,21 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 		// 	);
 		// }
 
-		const existingAppointment = await prisma.apppointment.findFirst({
+		const existingAppointment = await tx.apppointment.findFirst({
 			where : {
 				patientId : patient.id,
 				scheduleId : schedule.id,
-				// status : { not : AppointmentStatus.CANCELLED }
 			}
 		})
 
 		if(existingAppointment?.status === AppointmentStatus.PENDING){
 			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have A Pending Appointment. Please Pay For That")
 		}
-		if(existingAppointment?.status === AppointmentStatus.CONFIRMED){
-			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have A Confirmed Appointment.")
+		if(
+			existingAppointment?.status === AppointmentStatus.BOOKED ||
+			existingAppointment?.status === AppointmentStatus.CONFIRMED
+		){
+			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have A Booked Appointment.")
 		}
 		if(existingAppointment?.status === AppointmentStatus.ONGOING){
 			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have A Ongoing Appointment")
@@ -101,14 +103,23 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 
 		const amount = schedule.doctor.consultationFee.toString();
 
-		const appointment = await tx.apppointment.create({
-			data: {
-				status: AppointmentStatus.PENDING,
-				patientId : patient.id,
-				doctorId : schedule.doctor.id,
-				scheduleId : schedule.id
-			},
-		});
+		const appointment = existingAppointment?.status === AppointmentStatus.CANCELLED
+			? await tx.apppointment.update({
+				where: { id: existingAppointment.id },
+				data: {
+					status: AppointmentStatus.PENDING,
+					serialNumber: null,
+					joiningTime: null,
+				},
+			})
+			: await tx.apppointment.create({
+				data: {
+					status: AppointmentStatus.PENDING,
+					patientId : patient.id,
+					doctorId : schedule.doctor.id,
+					scheduleId : schedule.id
+				},
+			});
 
 		const bkashIdToken = await getBkashIdToken();
 
@@ -144,16 +155,40 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 
 		//paymen model create
 
-		await tx.payment.create({
-			data: {
-				merchantInvoiceNumber: bkashCreatePaymentResult.merchantInvoiceNumber,
-				appointmentId: appointment.id,
-				amount: amount,
-				gatewayResponse: bkashCreatePaymentResult,
-				bkashPaymentId: bkashCreatePaymentResult.paymentID,
-				payerReference: user.email,
-			},
+		const existingPayment = await tx.payment.findUnique({
+			where: { appointmentId: appointment.id },
 		});
+
+		if (existingPayment) {
+			await tx.payment.update({
+				where: { appointmentId: appointment.id },
+				data: {
+					status: PaymentStatus.UNPAID,
+					merchantInvoiceNumber: bkashCreatePaymentResult.merchantInvoiceNumber,
+					amount: amount,
+					gatewayResponse: bkashCreatePaymentResult,
+					bkashPaymentId: bkashCreatePaymentResult.paymentID,
+					payerReference: user.email,
+					bkashTrxId: null,
+					paidAt: null,
+					refundTrxId: null,
+					refundAmount: null,
+					refundReason: null,
+					refundedAt: null,
+				},
+			});
+		} else {
+			await tx.payment.create({
+				data: {
+					merchantInvoiceNumber: bkashCreatePaymentResult.merchantInvoiceNumber,
+					appointmentId: appointment.id,
+					amount: amount,
+					gatewayResponse: bkashCreatePaymentResult,
+					bkashPaymentId: bkashCreatePaymentResult.paymentID,
+					payerReference: user.email,
+				},
+			});
+		}
 
 		return {
 			paymentUrl: bkashCreatePaymentResult.bkashURL,
@@ -291,7 +326,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 
 		if (status === "success") {
 
-			const appointment = await prisma.apppointment.findUnique({
+			const appointment = await tx.apppointment.findUnique({
 				where : {
 					id: executedPaymentResult.merchantInvoiceNumber
 				},
@@ -306,6 +341,15 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 				throw new AppError(httpStatus.NOT_FOUND, "Appointment Not Found!")
 			}
 
+			if (
+				appointment.status === AppointmentStatus.BOOKED ||
+				appointment.status === AppointmentStatus.CONFIRMED
+			) {
+				return {
+					redirectUrl: `${config.frontend_url}/dashboard/my-appointments?status=success`,
+				};
+			}
+
 
 
 			
@@ -313,9 +357,37 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 			// total slot = 3 , available slot = 2
 			// (total - available) + 1
 
-			const alreadyBookedSlots = appointment.schedule.totalSlots - appointment.schedule.availableSlots;
+			await tx.$queryRaw`SELECT "id" FROM "schedules" WHERE "id" = ${appointment.schedule.id} FOR UPDATE`;
 
-			const serialNumber = alreadyBookedSlots + 1
+			const takenSlots = await tx.apppointment.findMany({
+				where: {
+					scheduleId: appointment.schedule.id,
+					serialNumber: { not: null },
+					status: {
+						in: [
+							AppointmentStatus.BOOKED,
+							AppointmentStatus.CONFIRMED,
+							AppointmentStatus.ONGOING,
+							AppointmentStatus.COMPLETED,
+						],
+					},
+				},
+				select: { serialNumber: true },
+			});
+
+			const takenSerials = new Set(takenSlots.map((slot) => slot.serialNumber));
+			let serialNumber: number | null = null;
+
+			for (let slot = 1; slot <= appointment.schedule.totalSlots; slot++) {
+				if (!takenSerials.has(slot)) {
+					serialNumber = slot;
+					break;
+				}
+			}
+
+			if (!serialNumber) {
+				throw new AppError(httpStatus.BAD_REQUEST, "This Schedule Is Fully Booked");
+			}
 
 			// 25 August => 3:00 PM - 4:00 PM
 			// 1st person joining time => startDateTime = 2026-08-25T15:00:00.436Z => 3:00 PM
@@ -333,28 +405,42 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 				(serialNumber - 1) * 20
 			)
 
+			await tx.apppointment.updateMany({
+				where: {
+					scheduleId: appointment.schedule.id,
+					serialNumber,
+					status: AppointmentStatus.CANCELLED,
+				},
+				data: {
+					serialNumber: null,
+					joiningTime: null,
+				},
+			});
+
+			const slotUpdate = await tx.schedule.updateMany({
+				where: {
+					id: appointment.schedule.id,
+					availableSlots: { gt: 0 },
+				},
+				data: {
+					availableSlots: { decrement: 1 },
+				},
+			});
+
+			if (slotUpdate.count === 0) {
+				throw new AppError(httpStatus.BAD_REQUEST, "This Schedule Is Fully Booked");
+			}
+
 			await tx.apppointment.update({
 				where: {
 					id: executedPaymentResult.merchantInvoiceNumber,
-					
 				},
 				data: {
-					status: AppointmentStatus.CONFIRMED,
+					status: AppointmentStatus.BOOKED,
 					joiningTime,
 					serialNumber
 				},
 			});
-
-			const newAvailableSlots = appointment.schedule.availableSlots - 1;
-
-			await prisma.schedule.update({
-				where : {
-					id : appointment.schedule.id
-				},
-				data : {
-					availableSlots : newAvailableSlots
-				}
-			})
 
 			await tx.payment.update({
 				where: {
@@ -490,16 +576,11 @@ const cancelAppointment = async (payload: ICancelAppointmentPayload, user : Requ
 			throw new AppError(httpStatus.NOT_FOUND, "Appointment Does Not Exists");
 		}
 
-		if (
-			existingAppointment.status === "ONGOING" ||
-			existingAppointment.status === "COMPLETED"
-		) {
-			throw new AppError(httpStatus.BAD_REQUEST, "Appointment Ongoing or Completed");
-		}
-
 		if (existingAppointment.status === "CANCELLED") {
 			throw new AppError(httpStatus.BAD_REQUEST, "Appointment Already Cancelled");
 		}
+
+		const heldASlot = existingAppointment.serialNumber != null;
 
 		const updatedAppointment = await tx.apppointment.update({
 			where: {
@@ -507,17 +588,24 @@ const cancelAppointment = async (payload: ICancelAppointmentPayload, user : Requ
 			},
 			data: {
 				status: AppointmentStatus.CANCELLED,
+				serialNumber: null,
+				joiningTime: null,
 			},
 		});
 
-		await prisma.schedule.update({
-			where : {
-				id : existingAppointment.schedule.id
-			},
-			data : {
-				availableSlots : {increment : 1}
-			}
-		})
+		if (
+			heldASlot &&
+			existingAppointment.schedule.availableSlots < existingAppointment.schedule.totalSlots
+		) {
+			await tx.schedule.update({
+				where : {
+					id : existingAppointment.schedule.id
+				},
+				data : {
+					availableSlots : {increment : 1}
+				}
+			})
+		}
 
 		// refund process
 		const now = new Date();
@@ -531,7 +619,7 @@ const cancelAppointment = async (payload: ICancelAppointmentPayload, user : Requ
 		// now < refundCutOff Time => refund eligible
 		const isEligibleForRefund = isBefore(now, refundCutOffTime)
 
-		if(isEligibleForRefund){
+		if(isEligibleForRefund && existingAppointment.payment?.status === PaymentStatus.PAID){
 
 			const bkashIdToken = await getBkashIdToken();
 
@@ -577,7 +665,7 @@ const cancelAppointment = async (payload: ICancelAppointmentPayload, user : Requ
 
 		}
 
-		const newPaymentInfo = await prisma.payment.findUnique({
+		const newPaymentInfo = await tx.payment.findUnique({
 			where: {
 				appointmentId: existingAppointment.id,
 			},
@@ -628,7 +716,10 @@ const updateAppointmentStatus = async (
 		throw new AppError(httpStatus.FORBIDDEN, "Appointment is Pending. You can change the status after appointment is confirmed")
 	}
 
-	if(appointment.status === AppointmentStatus.CONFIRMED){
+	if(
+		appointment.status === AppointmentStatus.BOOKED ||
+		appointment.status === AppointmentStatus.CONFIRMED
+	){
 
 		if(payload.status !== "ONGOING"){
 			throw new AppError(httpStatus.BAD_REQUEST, "Confirmed Appointment Must Be Ongoing At First")
