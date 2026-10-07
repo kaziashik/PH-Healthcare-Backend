@@ -206,6 +206,7 @@ const payAppointment = async (payload: IPayAppointmentPayload, user: RequestUser
 			id: appointmentId,
 		},
 		include : {
+			patient: true,
 			schedule : {
 				include : {
 					doctor : true
@@ -216,6 +217,10 @@ const payAppointment = async (payload: IPayAppointmentPayload, user: RequestUser
 
 	if (!existingAppointment) {
 		throw new AppError(httpStatus.NOT_FOUND, "Appointment Does Not Exists");
+	}
+
+	if (existingAppointment.patient.userId !== user.userId) {
+		throw new AppError(httpStatus.FORBIDDEN, "You Are Not Allowed To Pay For This Appointment");
 	}
 
 	if (existingAppointment.status !== "PENDING") {
@@ -525,7 +530,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 				},
 			});
 			return {
-				redirectUrl: `${config.frontend_url}/dashboard/my-appointments?status=failue`,
+				redirectUrl: `${config.frontend_url}/dashboard/my-appointments?status=failure`,
 			};
 		} else if (status === "cancel") {
 			await tx.payment.update({
@@ -562,18 +567,26 @@ const cancelAppointment = async (payload: ICancelAppointmentPayload, user : Requ
 		const existingAppointment = await tx.apppointment.findUnique({
 			where: {
 				id: appointmentId,
-				patient : {
-					email : user.email
-				}
 			},
 			include: {
 				payment: true,
-				schedule : true
+				schedule : true,
+				patient: true,
 			},
 		});
 
 		if (!existingAppointment) {
 			throw new AppError(httpStatus.NOT_FOUND, "Appointment Does Not Exists");
+		}
+
+		if (
+			user.role === Role.PATIENT &&
+			existingAppointment.patient.userId !== user.userId
+		) {
+			throw new AppError(
+				httpStatus.FORBIDDEN,
+				"You Are Not Allowed To Cancel This Appointment",
+			);
 		}
 
 		if (existingAppointment.status === "CANCELLED") {

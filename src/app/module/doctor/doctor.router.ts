@@ -4,7 +4,7 @@ import { DoctorController } from "./doctor.controller";
 import { auth, optionalAuth } from "../../middleware/checkAuth";
 import { Role } from "../../../generated/prisma/enums";
 import { validateRequest } from "../../middleware/validateRequest";
-import { UpdateDoctorProfileValidationZodSchema, VerifyDoctorEmailValidationZodSchema } from "./doctor.validation";
+import { ApproveDoctorValidationZodSchema, UpdateDoctorProfileValidationZodSchema, VerifyDoctorEmailValidationZodSchema } from "./doctor.validation";
 
 const router = Router();
 
@@ -34,6 +34,7 @@ router.post(
 router.post(
   "/approve-doctor",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
+  validateRequest(ApproveDoctorValidationZodSchema),
   DoctorController.approveDoctor,
 );
 

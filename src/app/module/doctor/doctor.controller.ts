@@ -5,17 +5,26 @@ import { sendResponse } from "../../utils/sendResponse";
 import { DoctorServices } from "./doctor.service";
 import { ApplyAsDoctorValidationZodSchema } from "./doctor.validation";
 import { IVerifyDoctorEmailPayload } from "./doctor.interface";
-import { prisma } from "../../lib/prisma";
-import { Role } from "../../../generated/prisma/enums";
+import { AppError } from "../../utils/AppError";
 
 const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
 	const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-	console.log({ files });
 	const resume = files?.["resume"] ? files["resume"][0] : null;
 	const additionalFiles = files?.["additionalFiles"] || [];
 
+	if (!req.body?.data) {
+		throw new AppError(httpStatus.BAD_REQUEST, "Application data is required");
+	}
+
+	let parsedData: unknown;
+	try {
+		parsedData = JSON.parse(req.body.data);
+	} catch {
+		throw new AppError(httpStatus.BAD_REQUEST, "Application data must be valid JSON");
+	}
+
 	const zodValidationResult = ApplyAsDoctorValidationZodSchema.safeParse(
-		JSON.parse(req.body.data),
+		parsedData,
 	);
 
 	if (!zodValidationResult.success) {

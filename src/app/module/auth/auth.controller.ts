@@ -122,10 +122,12 @@ const getMe = catchAsync(async (req: Request, res: Response) => {
 });
 
 const refreshToken = catchAsync(async (req: Request, res: Response) => {
-  if (!req.cookies.refreshToken) {
+  const incomingRefreshToken = req.cookies.refreshToken || req.body?.refreshToken;
+
+  if (!incomingRefreshToken) {
     throw new Error("Refresh token is missing");
   }
-  const result = await AuthService.refreshToken(req.cookies.refreshToken);
+  const result = await AuthService.refreshToken(incomingRefreshToken);
   const { accessToken, refreshToken: newRefreshToken } = result;
 
   setAuthCookies(res, accessToken, newRefreshToken);

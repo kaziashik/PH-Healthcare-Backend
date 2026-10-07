@@ -53,18 +53,80 @@ export const globalErrorHandler = async (
     
     else if (err instanceof Error) {
         errorMessage = err.message
+        statusCode = clientErrorStatus(err.message)
     }
 
 
 
 
 
+    const isClientError = statusCode >= 400 && statusCode < 500;
+
     res.status(statusCode).json({
         success: false,
         statusCode: statusCode || httpStatus.INTERNAL_SERVER_ERROR,
-        name: config.node_env === 'development' ? errorName : "Internal Server Error",
-        message: config.node_env === 'development' ? errorMessage : "Internal Server Error",
+        name: config.node_env === 'development' ? errorName : isClientError ? errorName : "Internal Server Error",
+        message: config.node_env === 'development' || isClientError ? errorMessage : "Internal Server Error",
         error: config.node_env === 'development' ? err : undefined,
         stack: config.node_env  === 'development' ? err.stack : undefined,
     })
+}
+
+const clientErrorStatus = (message: string) => {
+    const text = message.toLowerCase();
+
+    if (
+        text.includes("not logged in") ||
+        text.includes("invalid credentials") ||
+        text.includes("current password is incorrect") ||
+        text.includes("refresh token") ||
+        text.includes("invalid or expired") ||
+        text.includes("invalid token") ||
+        text.includes("jwt")
+    ) {
+        return httpStatus.UNAUTHORIZED;
+    }
+
+    if (
+        text.includes("forbidden") ||
+        text.includes("don't have permission") ||
+        text.includes("do not have permission") ||
+        text.includes("not allowed") ||
+        text.includes("blocked") ||
+        text.includes("not approved") ||
+        text.includes("not verified") ||
+        text.includes("must change your password") ||
+        text.includes("only available for patients") ||
+        text.includes("only a super admin")
+    ) {
+        return httpStatus.FORBIDDEN;
+    }
+
+    if (
+        text.includes("not found") ||
+        text.includes("does not exist") ||
+        text.includes("doesnt exist")
+    ) {
+        return httpStatus.NOT_FOUND;
+    }
+
+    if (text.includes("already")) {
+        return httpStatus.CONFLICT;
+    }
+
+    if (
+        text.includes("invalid") ||
+        text.includes("expected") ||
+        text.includes("too small") ||
+        text.includes("too big") ||
+        text.includes("required") ||
+        text.includes("must ") ||
+        text.includes("otp") ||
+        text.includes("no password") ||
+        text.includes("no file")
+    ) {
+        return httpStatus.BAD_REQUEST;
+    }
+
+    return httpStatus.INTERNAL_SERVER_ERROR;
 }

@@ -553,7 +553,7 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
     throw new Error("User Does Not Exist!");
   }
   if (isUserExists.status === "BLOCKED") {
-    throw new Error("user is BLOCED");
+    throw new Error("User is blocked");
   }
 
   if (isUserExists.isDeleted || isUserExists.status === "DELETED") {
@@ -618,7 +618,7 @@ const restPassword = async (payload: IResetPasswordPayload) => {
     throw new Error("User Does Not Exist!");
   }
   if (isUserExists.status === "BLOCKED") {
-    throw new Error("user is BLOCED");
+    throw new Error("User is blocked");
   }
 
   if (isUserExists.isDeleted || isUserExists.status === "DELETED") {

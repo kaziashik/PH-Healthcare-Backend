@@ -54,7 +54,7 @@ const cancelAppointment = catchAsync(async (req: Request, res: Response) => {
 	sendResponse(res, {
 		statusCode: httpStatus.OK,
 		success: true,
-		message: "Appointment Cancelled And Refunded Successfully",
+		message: "Appointment Cancelled Successfully",
 		data: result,
 	});
 });

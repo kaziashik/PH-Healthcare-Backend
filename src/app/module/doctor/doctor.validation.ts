@@ -56,6 +56,15 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
 	}),
 });
 
+export const ApproveDoctorValidationZodSchema = z.object({
+	doctorId: z.string().min(1, "Doctor id is required"),
+	verificationStatus: z.enum(
+		["APPROVED", "REJECTED"],
+		"Verification status must be APPROVED or REJECTED",
+	),
+	rejectionReason: z.string().trim().min(1).optional(),
+});
+
 export const VerifyDoctorEmailValidationZodSchema = z.object({
 	email: z.email("Invalid email address").trim().toLowerCase(),
 	otp: z.string().length(6, "OTP must be 6 digits"),

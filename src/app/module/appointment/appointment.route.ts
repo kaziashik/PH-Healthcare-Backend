@@ -2,7 +2,7 @@ import { Router } from "express";
 import { AppointmentController } from "./appointment.controller";
 import { auth } from "../../middleware/checkAuth";
 import { Role } from "../../../generated/prisma/enums";
-import { BookAppointmentValidationZodSchema, UpdateAppointmentStatusValidationZodSchema } from "./appointment.validation";
+import { BookAppointmentValidationZodSchema, CancelAppointmentValidationZodSchema, PayAppointmentValidationZodSchema, UpdateAppointmentStatusValidationZodSchema } from "./appointment.validation";
 import { validateRequest } from "../../middleware/validateRequest";
 
 const router = Router();
@@ -17,11 +17,13 @@ router.post(
 router.post(
 	"/pay-appointment",
 	auth(Role.PATIENT),
+	validateRequest(PayAppointmentValidationZodSchema),
 	AppointmentController.payAppointment,
 );
 router.post(
 	"/cancel-appointment",
 	auth(Role.PATIENT, Role.ADMIN, Role.SUPER_ADMIN),
+	validateRequest(CancelAppointmentValidationZodSchema),
 	AppointmentController.cancelAppointment,
 );
 

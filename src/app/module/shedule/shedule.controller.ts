@@ -88,14 +88,13 @@ const updateSchedule = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getTodaysSchedules = catchAsync(async (req: Request, res: Response) => {
-     console.log("chek Dr Id",req.query );
     const { data, meta } = await ScheduleServices.getTodaysSchedules(req.query);
     sendResponse(res, {
         statusCode: httpStatus.OK,
         success: true,
         message: "Today's Schedules Retrieved Successfully",
-        data:{data,
-        meta},
+        data,
+        meta,
     });
 });
 

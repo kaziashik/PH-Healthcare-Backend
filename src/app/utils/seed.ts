@@ -155,6 +155,27 @@ export const seedTesterDoctor = async () => {
         });
 
         if (isTesterDoctorExist) {
+            const envPassword = config.tester_doctor_password;
+            if (envPassword && isTesterDoctorExist.password) {
+                const passwordMatches = await bcrypt.compare(
+                    envPassword,
+                    isTesterDoctorExist.password,
+                );
+
+                if (!passwordMatches) {
+                    await prisma.user.update({
+                        where: { id: isTesterDoctorExist.id },
+                        data: {
+                            password: await bcrypt.hash(
+                                envPassword,
+                                Number(config.bcrypt_salt_rounds) || 8,
+                            ),
+                        },
+                    });
+                    console.log("Tester Doctor password synced from env");
+                }
+            }
+
             const doctorProfile = await prisma.doctor.findUnique({
                 where: { userId: isTesterDoctorExist.id },
             });

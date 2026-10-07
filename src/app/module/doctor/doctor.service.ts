@@ -42,15 +42,14 @@ const applyAsDoctor = async (
     );
   }
 
-  const resumeUploadResult = await new Promise<UploadApiResponse>(
-    (resolve, reject) => {
+  const uploadBuffer = (buffer: Buffer) =>
+    new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader
         .upload_stream(
           {
             resource_type: "auto",
           },
-
-          async (error, result) => {
+          (error, result) => {
             if (error) {
               return reject(error);
             }
@@ -62,36 +61,17 @@ const applyAsDoctor = async (
             resolve(result);
           },
         )
-        .end(resume?.buffer);
-    },
-  );
+        .end(buffer);
+    });
 
-  console.log({ resumeUploadResult });
+  const resumeUploadResult = resume?.buffer
+    ? await uploadBuffer(resume.buffer)
+    : null;
 
   const additionalFilesUploadResults = await Promise.all(
-    additionalFiles.map((file) => {
-      return new Promise<UploadApiResponse>((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream(
-            {
-              resource_type: "auto",
-            },
-
-            async (error, result) => {
-              if (error) {
-                return reject(error);
-              }
-
-              if (!result) {
-                return reject(new Error("No result returned from Cloudinary"));
-              }
-
-              resolve(result);
-            },
-          )
-          .end(file.buffer);
-      });
-    }),
+    additionalFiles
+      .filter((file) => file.buffer)
+      .map((file) => uploadBuffer(file.buffer)),
   );
 
   console.log({ additionalFilesUploadResults });
@@ -124,8 +104,8 @@ const applyAsDoctor = async (
       },
       doctor: {
         ...payload.doctor,
-        resume: resumeUploadResult.secure_url,
-        resumePublicId: resumeUploadResult.public_id,
+        resume: resumeUploadResult?.secure_url,
+        resumePublicId: resumeUploadResult?.public_id,
         additionalFiles: additionalFilesUploadResults.map((file) => ({
           url: file.secure_url,
           publicId: file.public_id,

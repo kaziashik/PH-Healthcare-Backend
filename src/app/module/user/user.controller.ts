@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { catchAsync } from "../../utils/catchAsync"
 import httpStatus from "http-status";
+import { AppError } from "../../utils/AppError";
 import { sendResponse } from "../../utils/sendResponse";
 import { userService } from "./user.service";
 import { ICreateManagedAccountPayload, IUpdateAccountStatusPayload } from "./user.interface";
@@ -9,7 +10,7 @@ import { Role } from "../../../generated/prisma/enums";
 const updateProfileImage=catchAsync(async (req: Request, res: Response) => {
 
   if(!req.file){
-    throw new Error("No File Provided");
+    throw new AppError(httpStatus.BAD_REQUEST, "No File Provided");
   }
 
   const userId=req.user?.userId;
