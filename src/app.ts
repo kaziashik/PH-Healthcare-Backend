@@ -12,6 +12,7 @@ import { userRoutes } from './app/module/user/user.router'
 import { AppointementRoutes } from './app/module/appointment/appointment.route'
 import { DoctorRoutes } from './app/module/doctor/doctor.router'
 import { ScheduleRoutes } from './app/module/shedule/shedule.route'
+import { PrescriptionRoutes } from './app/module/prescription/prescription.route'
 
 
 
@@ -34,6 +35,8 @@ app.use(cookieParser())
 app.use('/api/v1/auth', AuthRoutes)
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/appointment", AppointementRoutes);
+
+app.use("/api/v1/prescription", PrescriptionRoutes);
 
 app.use("/api/v1/doctor", DoctorRoutes);
 

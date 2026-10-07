@@ -43,15 +43,83 @@ const getAllSchedules = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const getScheduleById = catchAsync(async (req: Request, res: Response) => {
+    const scheduleId = req.params.scheduleId as string;
 
+    const result = await ScheduleServices.getScheduleById(scheduleId);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedule Retrieved Successfully",
+        data: result,
+    });
+});
+
+
+const publishSchedule = catchAsync(async (req: Request, res: Response) => {
+    const scheduleId = req.params.scheduleId as string;
+    const user = req.user!;
+
+    const result = await ScheduleServices.publishSchedule(scheduleId, user);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedule Published Successfully",
+        data: result,
+    });
+});
+
+const updateSchedule = catchAsync(async (req: Request, res: Response) => {
+    const scheduleId = req.params.scheduleId as string;
+    const payload = req.body;
+    const user = req.user!;
+
+    const result = await ScheduleServices.updateSchedule(
+        scheduleId,
+        payload,
+        user,
+    );
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedule Updated Successfully",
+        data: result,
+    });
+});
+
+const getTodaysSchedules = catchAsync(async (req: Request, res: Response) => {
+     console.log("chek Dr Id",req.query );
+    const { data, meta } = await ScheduleServices.getTodaysSchedules(req.query);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Today's Schedules Retrieved Successfully",
+        data:{data,
+        meta},
+    });
+});
+
+const deleteSchedule = catchAsync(async (req: Request, res: Response) => {
+    const scheduleId = req.params.scheduleId as string;
+    const user = req.user!;
+
+    const result = await ScheduleServices.deleteSchedule(scheduleId, user);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Schedule Deleted Successfully",
+        data: result,
+    });
+});
 
 export const ScheduleController = {
     createSchedule,
     getMySchedules,
     getAllSchedules,
-    // getTodaysSchedules,
-    // getScheduleById,
-    // updateSchedule,
-    // publishSchedule,
-    // deleteSchedule,
+    getTodaysSchedules,
+    getScheduleById,
+    
+    publishSchedule,
+    updateSchedule,
+    deleteSchedule,
 };

@@ -5,7 +5,7 @@ import { DoctorVerificationStatus, Role } from "../../../generated/prisma/enums"
 import config from "../../config";
 import { cloudinary } from "../../lib/cloudinary";
 import { prisma } from "../../lib/prisma";
-import { IApplyAsDoctorPayload, IApproveDoctorPayload, IVerifyDoctorEmailPayload } from "./doctor.interface";
+import { IApplyAsDoctorPayload, IApproveDoctorPayload, IUpdateDoctorProfilePayload, IVerifyDoctorEmailPayload } from "./doctor.interface";
 import { transporter } from "../../lib/nodemailer";
 import ejs from "ejs";
 import { redisClient } from "../../lib/redits";
@@ -391,9 +391,28 @@ const getAllDoctors = async (query: IQuery) => {
 	}
 }
 
+const updateDoctorProfile = async (payload : IUpdateDoctorProfilePayload, user : RequestUser) => {
+	const existingDoctor = await prisma.doctor.findUnique({
+		where: { userId: user.userId },
+	});
+
+	if (!existingDoctor) {
+		throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+	}
+
+	const updatedDoctor = await prisma.doctor.update({
+		where: { id: existingDoctor.id },
+		data: payload,
+	});
+
+	return updatedDoctor;
+
+}
+
 export const DoctorServices = {
   applyAsDoctor,
   verifyDoctorEmail,
   approveDoctor,
-  getAllDoctors
+  getAllDoctors,
+  updateDoctorProfile
 };

@@ -24,11 +24,14 @@ router.post("/verify-email",
 
 
 router.post("/login",validateRequest(userValidation.LoginZodSchema), AuthController.loginUser);
+
+
 router.get(
   "/login",
   auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
   AuthController.getMe,
 );
+
 router.get(
 	"/me",
 	auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
@@ -45,4 +48,9 @@ router.post("/refresh-token", AuthController.refreshToken);
 
 router.post("/forgot-password",validateRequest(userValidation.ForgetPasswordZodSchema), AuthController.forgotPassword);
 router.post("/reset-password",validateRequest(userValidation.ResetPasswordZodSchema), AuthController.restPassword);
+
+
+router.post("/logout", AuthController.logout);
+
+
 export const AuthRoutes = router;

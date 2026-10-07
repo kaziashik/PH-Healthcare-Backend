@@ -5,6 +5,7 @@ import { sendResponse } from "../../utils/sendResponse";
 import { IRequestUser } from "./auth.interface";
 import { AuthService } from "./auth.service";
 import z, { email } from "zod";
+import config from "../../config";
 
 
 const registerPatient = catchAsync(async (req: Request, res: Response) => {
@@ -45,37 +46,29 @@ const registerPatient = catchAsync(async (req: Request, res: Response) => {
 });
 
 const verifyPatientEmail = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+  const result = await AuthService.verifyPatientEmail(payload);
+  const { accessToken, refreshToken, user, patient } = result;
 
-	const payload = req.body;
-	
-	const result = await AuthService.verifyPatientEmail(payload);
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    secure: config.node_env === "development" ? false : true,
+    sameSite: "lax",
+    maxAge: 1000 * 60 * 60 * 24,
+  });
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: config.node_env === "development" ? false : true,
+    sameSite: "lax",
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  });
 
-	const { accessToken, refreshToken, user, patient } = result;
-
-	res.cookie("accessToken", accessToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-	});
-	res.cookie("refreshToken", refreshToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-	});
-
-	sendResponse(res, {
-		statusCode: httpStatus.CREATED,
-		success: true,
-		message: "Email Verified Successfully",
-		data: {
-			accessToken,
-			refreshToken,
-			user,
-			patient
-		}
-	});
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: "Email Verified Successfully",
+    data: { accessToken, refreshToken, user, patient },
+  });
 });
 
 
@@ -86,15 +79,15 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
+    secure:  config.node_env==="development"? false : true,
+		sameSite: config.node_env==="development"? "lax" : "lax",
+		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
   });
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: false,
-    sameSite: "none",
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    secure:  config.node_env==="development"? false : true,
+		sameSite: config.node_env==="development"? "lax" : "lax",
+		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
   });
 
   sendResponse(res, {
@@ -112,7 +105,12 @@ const getMe = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as unknown as IRequestUser;
 
   if (!user) {
-    throw new Error("User information is missing in the request");
+    return sendResponse(res, {
+      statusCode: httpStatus.UNAUTHORIZED,
+      success: false,
+      message: "User information is missing in the request",
+      data: null,
+    });
   }
 
   const result = await AuthService.getMe(user);
@@ -217,6 +215,18 @@ const restPassword = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const logout = catchAsync(async (req: Request, res: Response) => {
+  res.clearCookie("accessToken", { path: "/", sameSite: "lax", httpOnly: true });
+  res.clearCookie("refreshToken", { path: "/", sameSite: "lax", httpOnly: true });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User Logged Out Successfully",
+    data: null,
+  });
+});
+
 export const AuthController = {
   registerPatient,
   verifyPatientEmail,
@@ -225,5 +235,6 @@ export const AuthController = {
   refreshToken,
   googleLogin,
   forgotPassword,
-  restPassword
+  restPassword,
+  logout
 };

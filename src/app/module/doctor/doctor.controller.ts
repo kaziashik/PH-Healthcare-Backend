@@ -77,6 +77,21 @@ const getAllDoctors = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+const updateDoctorProfile = catchAsync(
+	async (req: Request, res: Response) => {
+		const payload = req.body;
+		const user = req.user!;
+
+		const result = await DoctorServices.updateDoctorProfile(payload, user);
+		sendResponse(res, {
+			statusCode: httpStatus.OK,
+			success: true,
+			message: "Doctor Profile Updated Successfully",
+			data: result,
+		});
+	},
+);
+
 
 
 
@@ -85,5 +100,6 @@ export const DoctorController = {
 	applyAsDoctor,
 	verifyDoctorEmail,
 	approveDoctor,
-	getAllDoctors
+	getAllDoctors,
+	updateDoctorProfile
 };
