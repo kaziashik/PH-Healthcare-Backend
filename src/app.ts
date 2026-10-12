@@ -20,9 +20,28 @@ import { ContactRoutes } from './app/module/contact/contact.route'
 
 const app: Application = express()
 
+const allowedOrigins = new Set(
+    [config.frontend_url].filter((value): value is string => Boolean(value)),
+)
+
+const isLocalPage = (origin: string) => {
+    try {
+        const url = new URL(origin)
+        return url.hostname === "localhost" || url.hostname === "127.0.0.1"
+    } catch {
+        return false
+    }
+}
+
 app.use(
     cors({
-        origin: config.frontend_url,
+        origin(origin, callback) {
+            if (!origin || allowedOrigins.has(origin) || isLocalPage(origin)) {
+                callback(null, origin ?? true)
+                return
+            }
+            callback(null, false)
+        },
         credentials: true,
     }),
 )

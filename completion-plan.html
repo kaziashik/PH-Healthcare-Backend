@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PH Healthcare — backend completion plan</title>
+  <style>
+    :root {
+      --ink: #142033;
+      --muted: #5c6b80;
+      --line: #d7e0ea;
+      --paper: #f4f7fb;
+      --card: #ffffff;
+      --blue: #1d4ed8;
+      --blue-soft: #e8f0ff;
+      --green: #157a45;
+      --green-soft: #e7f6ee;
+      --amber: #9a6700;
+      --amber-soft: #fff6df;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.5;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #0f2744;
+      color: #fff;
+      padding: 20px 16px 16px;
+    }
+
+    .wrap { max-width: 860px; margin: 0 auto; }
+
+    header h1 { margin: 0 0 6px; font-size: 1.45rem; }
+    header p { margin: 0; color: #c9d7ea; font-size: 0.95rem; }
+
+    .bar-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      font-size: 0.9rem;
+    }
+
+    .track {
+      height: 12px;
+      margin-top: 8px;
+      border-radius: 999px;
+      background: #234266;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0;
+      background: #7ddea8;
+      border-radius: inherit;
+      transition: width 0.25s ease;
+    }
+
+    main { padding: 20px 16px 48px; }
+
+    .tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    button, .note-toggle {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .danger { color: #9f1239; }
+
+    .patch {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+
+    .patch h2 {
+      margin: 0;
+      padding: 14px 16px 4px;
+      font-size: 1.05rem;
+    }
+
+    .patch .hint {
+      margin: 0;
+      padding: 0 16px 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .task {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px 12px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .task.done .title { color: var(--muted); text-decoration: line-through; }
+
+    .task input { width: 1.15rem; height: 1.15rem; margin-top: 3px; }
+
+    .title { font-weight: 650; }
+    .detail { color: var(--muted); font-size: 0.9rem; margin-top: 2px; }
+
+    .tag {
+      display: inline-block;
+      margin-top: 6px;
+      margin-right: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 650;
+    }
+
+    .tag.built { background: var(--green-soft); color: var(--green); }
+    .tag.open { background: var(--amber-soft); color: var(--amber); }
+
+    textarea {
+      grid-column: 2;
+      width: 100%;
+      min-height: 64px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+      resize: vertical;
+    }
+
+    .hidden { display: none; }
+    .saved { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>PH Healthcare backend plan</h1>
+      <p>Step-by-step path from the product requirements. Checked items are already in the API. Open items are what is left. Your checks and notes stay in this browser.</p>
+      <div class="bar-row">
+        <span id="count">0 of 0</span>
+        <span id="percent">0%</span>
+      </div>
+      <div class="track" aria-hidden="true"><div class="fill" id="fill"></div></div>
+    </div>
+  </header>
+  <main>
+    <div class="wrap">
+      <div class="tools">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="open" aria-pressed="false">Still open</button>
+        <button type="button" data-filter="done" aria-pressed="false">Done</button>
+        <button type="button" id="reset" class="danger">Reset to the code check</button>
+      </div>
+      <div id="list"></div>
+      <p class="saved" id="saved">Not saved yet.</p>
+    </div>
+  </main>
+  <script>
+    const STORAGE_KEY = "ph-healthcare-backend-plan-v1";
+
+    const SEED = [
+      { id: "roles-patient", patch: "1. Roles", hint: "Who can join, and how they sign in.", title: "Patient registers on the site", detail: "Name, email, and password. Registration always creates a patient.", done: true, kind: "built" },
+      { id: "roles-google", patch: "1. Roles", title: "Google sign-in is the same patient account", detail: "A patient can use email or Google. The accounts match by email. Doctors, admins, and super admins stay on email and password.", done: true, kind: "built" },
+      { id: "roles-doctor", patch: "1. Roles", title: "Doctor joins only by applying", detail: "The apply route is separate from patient registration. Approval comes later.", done: true, kind: "built" },
+      { id: "roles-admin", patch: "1. Roles", title: "Admin is created by an admin or a super admin", detail: "There is no public admin registration.", done: true, kind: "built" },
+      { id: "roles-super", patch: "1. Roles", title: "Super admin is created only by a super admin", detail: "An admin cannot create a super admin.", done: true, kind: "built" },
+
+      { id: "auth-otp-patient", patch: "2. Accounts and sign-in", hint: "OTP, passwords, cookies, and welcome mail.", title: "Patient email code before the account is usable", detail: "Register sends a 6-digit code. Login waits until that email is verified.", done: true, kind: "built" },
+      { id: "auth-otp-doctor", patch: "2. Accounts and sign-in", title: "Doctor application email code", detail: "Apply, then verify the 6-digit code, before an admin can approve the doctor.", done: true, kind: "built" },
+      { id: "auth-google-skip", patch: "2. Accounts and sign-in", title: "Google registration skips the email code", detail: "Google has already verified the address.", done: true, kind: "built" },
+      { id: "auth-admin-password", patch: "2. Accounts and sign-in", title: "Admin and super admin skip the email code", detail: "The API generates a password, sets must-change-password, and does not ask for an OTP.", done: true, kind: "built" },
+      { id: "auth-forgot", patch: "2. Accounts and sign-in", title: "Forgot password, then reset with the code", detail: "Email a code, then submit the code and a new password. This is for someone who does not remember the current password.", done: true, kind: "built" },
+      { id: "auth-change", patch: "2. Accounts and sign-in", title: "Change password while signed in", detail: "Current password plus a new password. This does not replace the forgot-password flow.", done: true, kind: "built" },
+      { id: "auth-set", patch: "2. Accounts and sign-in", title: "Set password is patients only", detail: "A Google patient can add a password and then sign in either way.", done: true, kind: "built" },
+      { id: "auth-cookies", patch: "2. Accounts and sign-in", title: "Access token and refresh token as cookies", detail: "Login and registration set both cookies. Refresh reads the refresh cookie.", done: true, kind: "built" },
+      { id: "auth-mail-patient", patch: "2. Accounts and sign-in", title: "Patient welcome email is in the API", detail: "The welcome template sends after the patient account is verified.", done: true, kind: "built" },
+      { id: "auth-mail-doctor", patch: "2. Accounts and sign-in", title: "Doctor approval email is in the API", detail: "Approve sends the welcome template. Reject sends the rejection template.", done: true, kind: "built" },
+      { id: "auth-mail-admin", patch: "2. Accounts and sign-in", title: "Admin invite email is in the API", detail: "The personal inbox receives the organization login email, the generated password, and the prompt to change it.", done: true, kind: "built" },
+
+      { id: "mgmt-approve", patch: "3. Who can manage whom", hint: "Admin and super admin, with the two super-admin exceptions.", title: "Approve or reject a doctor", detail: "Admin and super admin. Rejection can include a reason. The doctor cannot log in until approved.", done: true, kind: "built" },
+      { id: "mgmt-block-doctor", patch: "3. Who can manage whom", title: "Block or unblock a doctor", detail: "Admin and super admin, through account status.", done: true, kind: "built" },
+      { id: "mgmt-block-patient", patch: "3. Who can manage whom", title: "Block or unblock a patient", detail: "Admin and super admin.", done: true, kind: "built" },
+      { id: "mgmt-create-admin", patch: "3. Who can manage whom", title: "Create an admin", detail: "Organization email is the login. Personal email receives the invite.", done: true, kind: "built" },
+      { id: "mgmt-create-super", patch: "3. Who can manage whom", title: "Create a super admin", detail: "Super admin only.", done: true, kind: "built" },
+      { id: "mgmt-block-staff", patch: "3. Who can manage whom", title: "Block or unblock an admin or super admin", detail: "Super admin only. An admin cannot act on staff accounts.", done: true, kind: "built" },
+
+      { id: "sch-one", patch: "4. Doctor schedules", hint: "One date, one doctor, draft until publish.", title: "One schedule per doctor per calendar date", detail: "A second schedule on the same date is rejected.", done: true, kind: "built" },
+      { id: "sch-hours", patch: "4. Doctor schedules", title: "Length is 3 to 8 hours", detail: "Shorter or longer ranges are rejected.", done: true, kind: "built" },
+      { id: "sch-sameday", patch: "4. Doctor schedules", title: "Start and end stay on one calendar date", detail: "A range that crosses midnight is rejected.", done: true, kind: "built" },
+      { id: "sch-link", patch: "4. Doctor schedules", title: "Meeting link is part of the schedule", detail: "Every booking on that schedule uses the same link.", done: true, kind: "built" },
+      { id: "sch-draft", patch: "4. Doctor schedules", title: "Schedule starts as draft", detail: "Patients see it only after the doctor publishes it.", done: true, kind: "built" },
+      { id: "sch-slots", patch: "4. Doctor schedules", title: "Slots are the range divided by 20 minutes", detail: "A 6-hour schedule is 18 slots.", done: true, kind: "built" },
+      { id: "sch-date-lock", patch: "4. Doctor schedules", title: "Date locks when the schedule is published", detail: "The date cannot move after publish.", done: true, kind: "built" },
+      { id: "sch-time-lock", patch: "4. Doctor schedules", title: "Time range locks after the first booking", detail: "The meeting link can still change. The time range cannot, once a serial exists.", done: true, kind: "built" },
+
+      { id: "book-today", patch: "5. Booking", hint: "Today only, pay first, then a serial.", title: "Patients see only today's open schedules", detail: "Published, not started, and at least one slot left. Future and past dates stay hidden.", done: true, kind: "built" },
+      { id: "book-pay", patch: "5. Booking", title: "Book, then pay, then status becomes booked", detail: "The visit is created as pending. bKash success sets booked and assigns the next serial.", done: true, kind: "built" },
+      { id: "book-invoice", patch: "5. Booking", title: "Invoice PDF is built in the API", detail: "The mail includes the meeting link, date, time, serial, and payment details.", done: true, kind: "built" },
+
+      { id: "life-ongoing", patch: "6. Visit and prescription", hint: "Booked, then ongoing, then completed.", title: "Doctor sets the visit to ongoing", detail: "Manual status change after the visit is booked.", done: true, kind: "built" },
+      { id: "life-completed", patch: "6. Visit and prescription", title: "Doctor sets the visit to completed", detail: "Manual status change when the consultation is finished.", done: true, kind: "built" },
+      { id: "rx-rule", patch: "6. Visit and prescription", title: "Prescription only after completed", detail: "Findings plus at least one medicine. The API rejects an earlier visit.", done: true, kind: "built" },
+      { id: "rx-pdf", patch: "6. Visit and prescription", title: "Prescription PDF email is in the API", detail: "Submitting the prescription builds the PDF and sends it to the patient.", done: true, kind: "built" },
+
+      { id: "cancel-rule", patch: "7. Cancel and refund", hint: "The cutoff is 1 hour before the schedule starts.", title: "Refund rule is in the API", detail: "More than 1 hour before the start: cancel and refund. From that hour onward: cancel, no refund.", done: true, kind: "built" },
+
+      { id: "model-user", patch: "8. Data models", hint: "What each account must hold.", title: "User holds the shared identity", detail: "Email, nullable password, Google link, role, active or blocked, email verified, and must-change-password.", done: true, kind: "built" },
+      { id: "model-patient", patch: "8. Data models", title: "Patient profile holds personal and medical info", detail: "Contact, gender, date of birth, blood group, and medical history.", done: true, kind: "built" },
+      { id: "model-doctor", patch: "8. Data models", title: "Doctor profile holds the professional record", detail: "Specialization, license, qualifications, experience, fee, and bio.", done: true, kind: "built" },
+      { id: "model-admin", patch: "8. Data models", title: "Admin profile holds the organization email", detail: "The same shape covers admin and super admin. Role on the user tells them apart.", done: true, kind: "built" },
+
+      { id: "left-mail", patch: "9. What is still open", hint: "The code is in place. These are the proofs and the missing test suite.", title: "Receive the three account emails in a real inbox", detail: "Patient welcome, doctor approval, and the admin invite on the personal address. This needs the SMTP settings on the machine that sends them.", done: false, kind: "open" },
+      { id: "left-pay", patch: "9. What is still open", title: "Finish one bKash sandbox payment", detail: "A pending visit becomes booked, a serial is assigned, and the invoice email arrives. Do not mark this from a payment that did not finish.", done: false, kind: "open" },
+      { id: "left-refund", patch: "9. What is still open", title: "Prove both cancel outcomes on bKash", detail: "One cancel more than 1 hour before the start returns the fee. One cancel inside that hour closes the visit and keeps the fee.", done: false, kind: "open" },
+      { id: "left-rx", patch: "9. What is still open", title: "Receive one prescription PDF email", detail: "Complete a visit, write findings and a medicine, and confirm the patient inbox gets the PDF.", done: false, kind: "open" },
+      { id: "left-tests", patch: "9. What is still open", title: "Add automated tests for the locked rules", detail: "Schedule length and date lock, today's booking window, the 1-hour refund cutoff, and the super-admin-only staff actions.", done: false, kind: "open" }
+    ];
+
+    const list = document.querySelector("#list");
+    const fill = document.querySelector("#fill");
+    const count = document.querySelector("#count");
+    const percent = document.querySelector("#percent");
+    const saved = document.querySelector("#saved");
+    let filter = "all";
+    let items = load();
+
+    function load() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return SEED.map((item) => ({ ...item, note: "" }));
+      try {
+        const stored = JSON.parse(raw);
+        return SEED.map((item) => {
+          const prev = stored.items && stored.items[item.id];
+          return {
+            ...item,
+            done: prev ? Boolean(prev.done) : item.done,
+            note: prev && prev.note ? String(prev.note) : "",
+          };
+        });
+      } catch {
+        return SEED.map((item) => ({ ...item, note: "" }));
+      }
+    }
+
+    function persist() {
+      const payload = { items: {} };
+      items.forEach((item) => {
+        payload.items[item.id] = { done: item.done, note: item.note };
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      const when = new Date().toLocaleString();
+      saved.textContent = "Saved in this browser at " + when + ".";
+    }
+
+    function paintBar() {
+      const done = items.filter((item) => item.done).length;
+      const total = items.length;
+      const value = total ? Math.round((done / total) * 100) : 0;
+      fill.style.width = value + "%";
+      count.textContent = done + " of " + total + " steps";
+      percent.textContent = value + "%";
+    }
+
+    function render() {
+      list.innerHTML = "";
+      const patches = [];
+      items.forEach((item) => {
+        let patch = patches.find((entry) => entry.name === item.patch);
+        if (!patch) {
+          patch = { name: item.patch, hint: item.hint || "", tasks: [] };
+          patches.push(patch);
+        }
+        if (!patch.hint && item.hint) patch.hint = item.hint;
+        patch.tasks.push(item);
+      });
+
+      patches.forEach((patch) => {
+        const visible = patch.tasks.filter((item) => {
+          if (filter === "open") return !item.done;
+          if (filter === "done") return item.done;
+          return true;
+        });
+        if (!visible.length) return;
+
+        const section = document.createElement("section");
+        section.className = "patch";
+        const heading = document.createElement("h2");
+        heading.textContent = patch.name;
+        section.appendChild(heading);
+        if (patch.hint) {
+          const hint = document.createElement("p");
+          hint.className = "hint";
+          hint.textContent = patch.hint;
+          section.appendChild(hint);
+        }
+
+        visible.forEach((item) => {
+          const row = document.createElement("article");
+          row.className = "task" + (item.done ? " done" : "");
+
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = item.done;
+          box.id = item.id;
+          box.addEventListener("change", () => {
+            item.done = box.checked;
+            row.classList.toggle("done", item.done);
+            tag.textContent = item.done ? "Done" : "Still open";
+            tag.className = "tag " + (item.done ? "built" : "open");
+            persist();
+            paintBar();
+          });
+
+          const body = document.createElement("div");
+          const title = document.createElement("label");
+          title.className = "title";
+          title.htmlFor = item.id;
+          title.textContent = item.title;
+          const detail = document.createElement("div");
+          detail.className = "detail";
+          detail.textContent = item.detail;
+          const tag = document.createElement("span");
+          tag.className = "tag " + (item.done ? "built" : "open");
+          tag.textContent = item.done ? "Done" : "Still open";
+
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "note-toggle";
+          toggle.textContent = item.note ? "Edit note" : "Add note";
+          toggle.style.marginLeft = "8px";
+
+          const note = document.createElement("textarea");
+          note.className = item.note ? "" : "hidden";
+          note.placeholder = "Note for later. This stays on this computer.";
+          note.value = item.note;
+          note.addEventListener("input", () => {
+            item.note = note.value;
+            toggle.textContent = "Edit note";
+            persist();
+          });
+          toggle.addEventListener("click", () => {
+            note.classList.toggle("hidden");
+          });
+
+          body.append(title, detail, tag, toggle);
+          row.append(box, body, note);
+          section.appendChild(row);
+        });
+
+        list.appendChild(section);
+      });
+      paintBar();
+    }
+
+    document.querySelectorAll("[data-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        filter = button.dataset.filter;
+        document.querySelectorAll("[data-filter]").forEach((other) => {
+          other.setAttribute("aria-pressed", String(other === button));
+        });
+        render();
+      });
+    });
+
+    document.querySelector("#reset").addEventListener("click", () => {
+      const ok = confirm("Reset every check and note to the original code check?");
+      if (!ok) return;
+      localStorage.removeItem(STORAGE_KEY);
+      items = SEED.map((item) => ({ ...item, note: "" }));
+      saved.textContent = "Reset. The original code check is showing.";
+      render();
+    });
+
+    render();
+    if (localStorage.getItem(STORAGE_KEY)) {
+      saved.textContent = "Loaded the checks saved in this browser.";
+    }
+  </script>
+</body>
+</html>
