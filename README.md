@@ -1,14 +1,17 @@
-# PH Healthcare System — Backend
+# PH Healthcare — Backend
 
-REST API for a doctor-appointment platform: patients book consultations, doctors run them, admins manage the platform. This repo is the backend only.
+REST API for same-day doctor visits. A patient books a published schedule, pays the consultation fee with bKash, and receives a 20-minute serial. A doctor publishes hours and writes the prescription. Admins and super admins approve doctors and manage accounts.
 
-**Stack:** Node.js · Express 5 · TypeScript · Prisma 7 · PostgreSQL · JWT auth
+[![Live API](https://img.shields.io/badge/API-ph--healthcare--api.vercel.app-6cc644)](https://ph-healthcare-api.vercel.app)
+[![Live site](https://img.shields.io/badge/Site-ph--healthcare--six.vercel.app-4c8bf5)](https://ph-healthcare-six.vercel.app)
 
-## Where the project stands today
+**Stack:** Node.js · Express 5 · TypeScript · Prisma 7 · PostgreSQL · Redis · JWT cookies · bKash
 
-This is an early build, not the finished product. Right now the only working feature is authentication — a patient can register, log in, and fetch their own profile. Appointments, doctor schedules, payments, and everything else in [`Project Requirements.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/Project%20Requirements.md) is planned but not built yet.
+This folder is the API only. The product walkthrough, role diagrams, and screen map are in the frontend README: [`../PH Healthcare Management System Frontend/README.md`](../PH%20Healthcare%20Management%20System%20Frontend/README.md).
 
-Treat this README as a description of what the code *actually does today*, including its rough edges. A few are called out directly in [Known limitations](#known-limitations) further down — read that section before assuming something is broken on your end.
+Every route is listed in [`../PH Healthcare Management System Frontend/Note/API-Endpoints.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/API-Endpoints.md). The product rules are in [`../PH Healthcare Management System Frontend/Note/Project Requirements.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/Project%20Requirements.md).
+
+Base URL locally: `http://localhost:5000`. Live base URL: `https://ph-healthcare-api.vercel.app`. Feature routes use the prefix `/api/v1`.
 
 ## Prerequisites
 
@@ -55,7 +58,7 @@ Prisma writes a typed client into `src/generated/prisma`. That folder is git-ign
 npx prisma migrate dev
 ```
 
-This creates the `user` and `patient` tables using the SQL already committed under `prisma/migrations/`.
+This applies the SQL already committed under `prisma/migrations/`. The schema covers users, patients, doctors, admins, schedules, appointments, payments, and prescriptions.
 
 **5. Start the server**
 
@@ -121,11 +124,14 @@ src/
     │   ├── jwt.ts                   # sign / verify helpers
     │   └── sendResponse.ts          # the standard `{ success, statusCode, message, data }` envelope
     └── module/
-        └── auth/                    # the one feature module that exists so far
-            ├── auth.route.ts
-            ├── auth.controller.ts
-            ├── auth.service.ts
-            └── auth.interface.ts
+        ├── auth/
+        ├── user/
+        ├── doctor/
+        ├── shedule/
+        ├── appointment/
+        ├── prescription/
+        ├── payment/
+        └── contact/
 
 prisma/
 ├── schema/
@@ -138,44 +144,36 @@ prisma/
 
 Prisma's schema is split across multiple files, wired together by `prisma.config.ts` at the repo root. That file also loads `.env` so the Prisma CLI can see `DATABASE_URL`.
 
-**The data model:** a `User` has at most one `Patient` (1-to-1). Registering writes both rows in a single nested Prisma call. Deletes are meant to be soft — there's an `isDeleted` flag and a `deletedAt` timestamp on both models — but nothing in the codebase sets them yet; there's no delete endpoint at all right now.
+**The data model:** every account is one `User`, linked to one profile for its role: patient, doctor, or admin. A doctor owns schedules. A patient books an appointment on a schedule, pays it, and can receive one prescription after the visit is completed.
 
 ## The API
 
-Base URL: `http://localhost:5000`
+| Area | Prefix | Examples |
+| --- | --- | --- |
+| Auth | `/api/v1/auth` | register, verify email, login, Google, forgot and reset password, change password, logout |
+| Users | `/api/v1/user` | create admin, create super admin, block or unblock, list patients and admins |
+| Doctors | `/api/v1/doctor` | apply, verify email, approve, list, update profile |
+| Schedules | `/api/v1/schedule` | create, publish, today's open schedules |
+| Appointments | `/api/v1/appointment` | book, pay, bKash callback, cancel, update status |
+| Prescriptions | `/api/v1/prescription` | create after the visit is completed, read by appointment |
+| Payments | `/api/v1/payment` | the patient's payments, or every payment for an admin |
+| Contact | `/api/v1/contact` | clinic inbox message. This is not a booking |
 
-| Method | Path                          | Auth required | Body                         |
-| ------ | ----------------------------- | ------------- | ----------------------------- |
-| `GET`  | `/`                            | –             | health check                  |
-| `POST` | `/api/v1/auth/register`        | –             | `name`, `email`, `password`   |
-| `POST` | `/api/v1/auth/login`           | –             | `email`, `password`           |
-| `GET`  | `/api/v1/auth/me`              | yes           | –                              |
-| `POST` | `/api/v1/auth/refresh-token`   | –             | reads the `refreshToken` cookie |
+`GET /` returns a welcome message. The full method, role, and body list is in [`API-Endpoints.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/API-Endpoints.md).
 
-Every response from `sendResponse` (i.e. everything except the root route) has this shape:
+A successful JSON response has this shape:
 
 ```json
 { "success": true, "statusCode": 200, "message": "...", "data": {} }
 ```
 
-### Tokens: use the response body, not the cookies
-
-`register` and `login` return `accessToken` and `refreshToken` two ways: in the JSON body, and as cookies. **Use the JSON body.** The cookies are set with `sameSite: "none"` but `secure: false` — that combination is invalid under the cookie spec, and modern browsers silently drop the cookie rather than send it. Grab `data.accessToken` from the response and send it yourself:
-
-```bash
-curl -X POST http://localhost:5000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test Patient","email":"patient@example.com","password":"password123"}'
-
-curl http://localhost:5000/api/v1/auth/me \
-  -H "Authorization: Bearer <accessToken from the response above>"
-```
-
-`Authorization` accepts either `Bearer <token>` or the raw token with no prefix.
+Login and registration set an access token and a refresh token as httpOnly cookies. The frontend sends those cookies with `credentials: "include"`. `GET /api/v1/auth/me` returns the signed-in user.
 
 ## Roles and authentication
 
-Four roles exist in the schema — `SUPER_ADMIN`, `ADMIN`, `DOCTOR`, `PATIENT` — but **registration always creates a `PATIENT`.** `registerPatient` hardcodes `Role.PATIENT` and only reads `name`, `email`, and `password` out of the request body, so sending `"role": "ADMIN"` does nothing. There's no admin module and no seed script, so the other three roles aren't reachable through the API yet. To test them, register a normal user and change their `role` directly in the database with `npx prisma studio` (opens at `http://localhost:5555`) — then log in again, since the role is baked into the token at login time and an old token keeps the old role.
+Four roles exist: `SUPER_ADMIN`, `ADMIN`, `DOCTOR`, and `PATIENT`.
+
+Public registration always creates a patient. A doctor joins through `POST /api/v1/doctor/apply-as-doctor` and cannot use the platform until an admin approves them. Admins and super admins are created by an existing manager. Google login is patient-only.
 
 `auth(...roles)`, exported from `checkAuth.ts`, is the route guard:
 
@@ -191,16 +189,9 @@ What it actually does, in order:
 4. Looks the user up in the database by matching `id`, `email`, `name`, *and* `role` all at once — if any of those four have changed since the token was issued, the lookup fails and the request is rejected, even though the account still exists.
 5. Rejects the request only if the user's `status` is exactly `BLOCKED`. It does **not** check `isDeleted` or a `DELETED` status, so a soft-deleted account can still authenticate as long as `status` wasn't also set to `BLOCKED`.
 
-## Known limitations
+Request bodies are checked with Zod on the routes that accept one. A password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.
 
-Worth knowing before you spend time debugging what looks like your own mistake:
-
-- **Every error comes back as HTTP 500.** `globalErrorHandler` works out the "correct" status code internally but always sends the response with `500`, regardless. Read the `message` field, not the status code, to see what actually went wrong.
-- **No request validation.** Nothing checks that `email` looks like an email or that `password` meets any length requirement — Postgres and Prisma are the only things that will reject bad input, and usually not with a helpful message.
-- **`BCRYPT_SALT_ROUNDS` isn't used.** Password hashing in `auth.service.ts` calls `bcrypt.hash(password, 8)` with a hardcoded cost factor; the environment variable is read into `config` but nothing references it yet.
-- **No tests.** `npm test` is a placeholder.
-
-## Extending this starter
+## Extending a module
 
 New features go under `src/app/module/<name>/` as four files with strict responsibilities:
 
@@ -220,14 +211,15 @@ app.use('/api/v1/doctor', DoctorRoutes)
 Two rules keep the module boundaries useful rather than decorative:
 
 - **Controllers never call Prisma directly**, and **services never touch `req` or `res`.** If a service needs to know who's calling it, pass it the small `{ userId, email, name, role }` shape, not the whole request.
-- **Never spread `req.body` straight into a Prisma `create`/`update`.** Destructure the exact fields you expect. With no validation layer in front of the API, that destructuring is the only thing stopping someone from sending `"role": "ADMIN"` in a request body and having it stick.
+- **Never spread `req.body` straight into a Prisma `create`/`update`.** Destructure the exact fields you expect. Zod rejects a bad body, and this destructuring keeps a field like `role` from being written just because a client sent it.
 
 ## Scripts
 
 ```bash
-npm run dev     # start the server with auto-reload (tsx watch) — use this while developing
-npm run build   # typecheck with tsc and emit to dist/
-npm run start   # run the server once, no watching
+npm run dev       # tsx watch ./src/server.ts
+npm run build     # prisma generate, then bundle with tsup
+npm run start     # node dist/server.js
+npm run typecheck # tsc --noEmit
 ```
 
 There's no `npm run generate` / `migrate` / `studio` wrapper — call Prisma's CLI directly:
@@ -237,10 +229,6 @@ npx prisma generate     # regenerate the client after editing prisma/schema/
 npx prisma migrate dev  # create + apply a migration
 npx prisma studio       # browser GUI for your data, at http://localhost:5555
 ```
-
-### A note on `npm run build`
-
-`npm run build` is useful for catching type errors, but its output isn't directly runnable with `node`. The codebase uses extensionless relative imports (`from './app'`), which `tsx` resolves fine but Node's native ESM loader doesn't — running `node dist/src/server.js` fails with `ERR_UNSUPPORTED_DIR_IMPORT`. That's why `npm run start` runs the TypeScript source through `tsx` rather than executing `dist/`.
 
 ## Troubleshooting
 
