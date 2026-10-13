@@ -1,4 +1,4 @@
-import { addMinutes, isBefore, isSameDay, subHours } from "date-fns";
+import { addMinutes, isBefore, subHours } from "date-fns";
 import httpStatus from "http-status";
 import PDFDocument from "pdfkit";
 import {
@@ -46,13 +46,6 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 		}
 
 		const now = new Date()
-
-		if(!isSameDay(now, schedule.startDateTime)){
-			throw new AppError(
-				httpStatus.BAD_REQUEST,
-				"This Schedule Is Not Available Today",
-			);
-		}
 
 		if(!isBefore(now, schedule.startDateTime)){
 			throw new AppError(

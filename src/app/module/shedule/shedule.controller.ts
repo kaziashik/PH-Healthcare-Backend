@@ -98,6 +98,17 @@ const getTodaysSchedules = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getFutureSchedules = catchAsync(async (req: Request, res: Response) => {
+    const { data, meta } = await ScheduleServices.getFutureSchedules(req.query);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Future Schedules Retrieved Successfully",
+        data,
+        meta,
+    });
+});
+
 const deleteSchedule = catchAsync(async (req: Request, res: Response) => {
     const scheduleId = req.params.scheduleId as string;
     const user = req.user!;
@@ -116,6 +127,7 @@ export const ScheduleController = {
     getMySchedules,
     getAllSchedules,
     getTodaysSchedules,
+    getFutureSchedules,
     getScheduleById,
     
     publishSchedule,

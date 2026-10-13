@@ -524,6 +524,90 @@ const getTodaysSchedules = async (query : IQuery) => {
     };
 }
 
+const getFutureSchedules = async (query : IQuery) => {
+    if (query.doctorId) {
+        const doctor = await prisma.doctor.findUnique({
+            where: { id : query.doctorId },
+        });
+
+        if (!doctor) {
+            throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+        }
+    }
+
+    const limit = query.limit ? Number(query.limit) : 10;
+    const page = query.page ? Number(query.page) : 1;
+    const skip = (page - 1) * limit;
+    const sortBy = query.sortBy ? query.sortBy : "startDateTime";
+    const sortOrder = query.sortOrder ? query.sortOrder : "asc";
+
+    const startOfTomorrow = addDays(startOfDay(new Date()), 1);
+
+    const andConditions: ScheduleWhereInput[] = [
+        {
+            isDeleted : false
+        },
+        {
+            status : ScheduleStatus.PUBLISHED
+        },
+        {
+            startDateTime : {
+                gte : startOfTomorrow,
+            }
+        },
+        {
+            availableSlots : { gt : 0}
+        },
+        {
+            doctor: {
+                verificationStatus: DoctorVerificationStatus.APPROVED,
+                isDeleted: false,
+                user: {
+                    status: UserStatus.ACTIVE,
+                    isDeleted: false,
+                },
+            },
+        },
+    ];
+
+    if (query.doctorId) {
+        andConditions.push({ doctorId: query.doctorId });
+    }
+
+    const schedules = await prisma.schedule.findMany({
+        where: {
+            AND: andConditions
+        },
+        take: limit,
+        skip,
+        orderBy: {
+            [sortBy]: sortOrder
+        },
+        include: {
+            doctor: {
+                select: {
+                    id: true,
+                    name: true,
+                    specialization: true,
+                    consultationFee: true,
+                },
+            },
+        },
+    })
+
+    const total = await prisma.schedule.count({ where: { AND: andConditions } });
+
+    return {
+        data: schedules,
+        meta: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+        },
+    };
+}
+
 const deleteSchedule = async (scheduleId: string, user: RequestUser) => {
     const doctor = await prisma.doctor.findUnique({
         where: { userId: user.userId },
@@ -561,5 +645,6 @@ export const ScheduleServices = {
     updateSchedule,
     publishSchedule,
     deleteSchedule,
-    getTodaysSchedules
+    getTodaysSchedules,
+    getFutureSchedules,
 }
