@@ -1,4 +1,4 @@
-import { addDays, differenceInMinutes, isAfter, isSameDay, startOfDay } from "date-fns";
+import { addDays, addMinutes, differenceInMinutes, isAfter, isBefore, isSameDay, startOfDay } from "date-fns";
 import { prisma } from "../../lib/prisma";
 import { RequestUser } from "../../middleware/checkAuth";
 import { AppError } from "../../utils/AppError";
@@ -11,6 +11,7 @@ import { AppointmentStatus, DoctorVerificationStatus, ScheduleStatus, UserStatus
 const MIN_SCHEDULE_MINUTES = 3 * 60;
 const MAX_SCHEDULE_MINUTES = 8 * 60;
 const MINUTES_PER_SLOT = 20;
+const UNPAID_HOLD_MS = 5 * 60 * 1000;
 
 const assertScheduleWindow = (startDateTime: Date, endDateTime: Date) => {
     if (!isSameDay(startDateTime, endDateTime)) {
@@ -608,6 +609,92 @@ const getFutureSchedules = async (query : IQuery) => {
     };
 }
 
+const getDoctorOpenSlots = async (doctorId: string) => {
+    const doctor = await prisma.doctor.findUnique({
+        where: { id: doctorId },
+    });
+
+    if (!doctor || doctor.isDeleted) {
+        throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+    }
+
+    const now = new Date();
+    const holdAfter = new Date(now.getTime() - UNPAID_HOLD_MS);
+
+    const schedules = await prisma.schedule.findMany({
+        where: {
+            doctorId,
+            isDeleted: false,
+            status: ScheduleStatus.PUBLISHED,
+            startDateTime: { gt: now },
+            availableSlots: { gt: 0 },
+            doctor: {
+                verificationStatus: DoctorVerificationStatus.APPROVED,
+                isDeleted: false,
+                user: {
+                    status: UserStatus.ACTIVE,
+                    isDeleted: false,
+                },
+            },
+        },
+        orderBy: { startDateTime: "asc" },
+        include: {
+            appointments: {
+                where: {
+                    serialNumber: { not: null },
+                    OR: [
+                        {
+                            status: {
+                                in: [
+                                    AppointmentStatus.BOOKED,
+                                    AppointmentStatus.CONFIRMED,
+                                    AppointmentStatus.ONGOING,
+                                    AppointmentStatus.COMPLETED,
+                                ],
+                            },
+                        },
+                        {
+                            status: AppointmentStatus.PENDING,
+                            updatedAt: { gte: holdAfter },
+                        },
+                    ],
+                },
+                select: { serialNumber: true },
+            },
+        },
+    });
+
+    const slots = schedules.flatMap((schedule) => {
+        const taken = new Set(
+            schedule.appointments.map((appointment) => appointment.serialNumber),
+        );
+
+        return Array.from({ length: schedule.totalSlots }, (_, index) => {
+            const serialNumber = index + 1;
+            if (taken.has(serialNumber)) {
+                return null;
+            }
+
+            const startDateTime = addMinutes(
+                schedule.startDateTime,
+                (serialNumber - 1) * MINUTES_PER_SLOT,
+            );
+            if (!isBefore(now, startDateTime)) {
+                return null;
+            }
+
+            return {
+                scheduleId: schedule.id,
+                serialNumber,
+                startDateTime,
+                endDateTime: addMinutes(startDateTime, MINUTES_PER_SLOT),
+            };
+        }).filter((slot) => slot !== null);
+    });
+
+    return slots;
+};
+
 const deleteSchedule = async (scheduleId: string, user: RequestUser) => {
     const doctor = await prisma.doctor.findUnique({
         where: { userId: user.userId },
@@ -647,4 +734,5 @@ export const ScheduleServices = {
     deleteSchedule,
     getTodaysSchedules,
     getFutureSchedules,
+    getDoctorOpenSlots,
 }

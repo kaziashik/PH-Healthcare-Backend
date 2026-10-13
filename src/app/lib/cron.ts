@@ -31,9 +31,11 @@ export const releaseUnpaidAppointments = async () => {
       for (const appointment of staleAppointments) {
         await prisma.$transaction(async (tx) => {
           const heldASlot = appointment.serialNumber != null;
-
-          await tx.apppointment.update({
-            where: { id: appointment.id },
+          const released = await tx.apppointment.updateMany({
+            where: {
+              id: appointment.id,
+              status: AppointmentStatus.PENDING,
+            },
             data: {
               status: AppointmentStatus.CANCELLED,
               serialNumber: null,
@@ -41,12 +43,16 @@ export const releaseUnpaidAppointments = async () => {
             },
           });
 
-          if (
-            heldASlot &&
-            appointment.schedule.availableSlots < appointment.schedule.totalSlots
-          ) {
-            await tx.schedule.update({
-              where: { id: appointment.scheduleId },
+          if (released.count === 0) {
+            return;
+          }
+
+          if (heldASlot) {
+            await tx.schedule.updateMany({
+              where: {
+                id: appointment.scheduleId,
+                availableSlots: { lt: appointment.schedule.totalSlots },
+              },
               data: { availableSlots: { increment: 1 } },
             });
           }

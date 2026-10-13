@@ -2,6 +2,7 @@ import z from "zod";
 
 export const BookAppointmentValidationZodSchema = z.object({
     scheduleId: z.string().min(1, "Schedule Id Is Required"),
+    serialNumber: z.number().int().positive("Choose A Time"),
 });
 
 export const PayAppointmentValidationZodSchema = z.object({

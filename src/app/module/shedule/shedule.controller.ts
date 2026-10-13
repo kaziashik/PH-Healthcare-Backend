@@ -98,6 +98,17 @@ const getTodaysSchedules = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getDoctorOpenSlots = catchAsync(async (req: Request, res: Response) => {
+    const doctorId = req.params.doctorId as string;
+    const data = await ScheduleServices.getDoctorOpenSlots(doctorId);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Open Slots Retrieved Successfully",
+        data,
+    });
+});
+
 const getFutureSchedules = catchAsync(async (req: Request, res: Response) => {
     const { data, meta } = await ScheduleServices.getFutureSchedules(req.query);
     sendResponse(res, {
@@ -128,6 +139,7 @@ export const ScheduleController = {
     getAllSchedules,
     getTodaysSchedules,
     getFutureSchedules,
+    getDoctorOpenSlots,
     getScheduleById,
     
     publishSchedule,

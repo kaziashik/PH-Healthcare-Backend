@@ -46,11 +46,25 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 		}
 
 		const now = new Date()
+		const serialNumber = payload.serialNumber;
 
-		if(!isBefore(now, schedule.startDateTime)){
+		if (
+			!Number.isInteger(serialNumber) ||
+			serialNumber < 1 ||
+			serialNumber > schedule.totalSlots
+		) {
+			throw new AppError(httpStatus.BAD_REQUEST, "This Time Is Not On The Schedule");
+		}
+
+		const joiningTime = addMinutes(
+			schedule.startDateTime,
+			(serialNumber - 1) * 20,
+		);
+
+		if(!isBefore(now, joiningTime)){
 			throw new AppError(
 				httpStatus.BAD_REQUEST,
-				"This Schedule Has Already Started",
+				"This Time Has Already Started",
 			);
 		}
 		// if(isAfter(now, schedule.startDateTime)){
@@ -67,9 +81,6 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 			}
 		})
 
-		if(existingAppointment?.status === AppointmentStatus.PENDING){
-			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have A Pending Appointment. Please Pay For That")
-		}
 		if(
 			existingAppointment?.status === AppointmentStatus.BOOKED ||
 			existingAppointment?.status === AppointmentStatus.CONFIRMED
@@ -83,8 +94,79 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 			throw new AppError(httpStatus.BAD_REQUEST, "You Already Have Completed An Appointment On This Schedule. Please Try Again Another Day")
 		}
 
-		if(schedule.availableSlots === 0){
-			throw new AppError(httpStatus.BAD_REQUEST, "This Schedule Is Fully Booked");
+		await tx.$queryRaw`SELECT "id" FROM "schedules" WHERE "id" = ${schedule.id} FOR UPDATE`;
+
+		const holdAfter = new Date(now.getTime() - 5 * 60 * 1000);
+		const takenSlot = await tx.apppointment.findFirst({
+			where: {
+				scheduleId: schedule.id,
+				serialNumber,
+				...(existingAppointment ? { id: { not: existingAppointment.id } } : {}),
+				OR: [
+					{
+						status: {
+							in: [
+								AppointmentStatus.BOOKED,
+								AppointmentStatus.CONFIRMED,
+								AppointmentStatus.ONGOING,
+								AppointmentStatus.COMPLETED,
+							],
+						},
+					},
+					{
+						status: AppointmentStatus.PENDING,
+						updatedAt: { gte: holdAfter },
+					},
+				],
+			},
+		});
+
+		if (takenSlot) {
+			throw new AppError(httpStatus.BAD_REQUEST, "This Time Is Already Taken");
+		}
+
+		await tx.apppointment.updateMany({
+			where: {
+				scheduleId: schedule.id,
+				serialNumber,
+				status: AppointmentStatus.CANCELLED,
+			},
+			data: {
+				serialNumber: null,
+				joiningTime: null,
+			},
+		});
+
+		const alreadyHoldingThisSerial =
+			existingAppointment?.status === AppointmentStatus.PENDING &&
+			existingAppointment.serialNumber === serialNumber;
+		const holdingAnotherSerial =
+			existingAppointment?.status === AppointmentStatus.PENDING &&
+			existingAppointment.serialNumber != null &&
+			existingAppointment.serialNumber !== serialNumber;
+
+		if (
+			holdingAnotherSerial &&
+			schedule.availableSlots < schedule.totalSlots
+		) {
+			await tx.schedule.update({
+				where: { id: schedule.id },
+				data: { availableSlots: { increment: 1 } },
+			});
+		}
+
+		if (!alreadyHoldingThisSerial) {
+			const slotUpdate = await tx.schedule.updateMany({
+				where: {
+					id: schedule.id,
+					availableSlots: { gt: 0 },
+				},
+				data: { availableSlots: { decrement: 1 } },
+			});
+
+			if (slotUpdate.count === 0) {
+				throw new AppError(httpStatus.BAD_REQUEST, "This Schedule Is Fully Booked");
+			}
 		}
 
 		if(!schedule.doctor.consultationFee){
@@ -101,13 +183,15 @@ const bookAppointment = async (payload: IBookAppointmentPayload , user: RequestU
 				where: { id: existingAppointment.id },
 				data: {
 					status: AppointmentStatus.PENDING,
-					serialNumber: null,
-					joiningTime: null,
+					serialNumber,
+					joiningTime,
 				},
 			})
 			: await tx.apppointment.create({
 				data: {
 					status: AppointmentStatus.PENDING,
+					serialNumber,
+					joiningTime,
 					patientId : patient.id,
 					doctorId : schedule.doctor.id,
 					scheduleId : schedule.id
@@ -355,8 +439,23 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 			// total slot = 3 , available slot = 2
 			// (total - available) + 1
 
+			let serialNumber = appointment.serialNumber;
+			let joiningTime = appointment.joiningTime;
+
 			await tx.$queryRaw`SELECT "id" FROM "schedules" WHERE "id" = ${appointment.schedule.id} FOR UPDATE`;
 
+			if (serialNumber && joiningTime) {
+				await tx.apppointment.update({
+					where: {
+						id: executedPaymentResult.merchantInvoiceNumber,
+					},
+					data: {
+						status: AppointmentStatus.BOOKED,
+						serialNumber,
+						joiningTime,
+					},
+				});
+			} else {
 			const takenSlots = await tx.apppointment.findMany({
 				where: {
 					scheduleId: appointment.schedule.id,
@@ -374,7 +473,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 			});
 
 			const takenSerials = new Set(takenSlots.map((slot) => slot.serialNumber));
-			let serialNumber: number | null = null;
+			serialNumber = null;
 
 			for (let slot = 1; slot <= appointment.schedule.totalSlots; slot++) {
 				if (!takenSerials.has(slot)) {
@@ -398,7 +497,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 			// 3nd person joining time => startDateTime = 2026-08-25T15:40:00.436Z => 3:00 PM
 			// serial number (3) - 1 * 20 => 40 mintes
 
-			const joiningTime = addMinutes(
+			joiningTime = addMinutes(
 				appointment.schedule.startDateTime, 
 				(serialNumber - 1) * 20
 			)
@@ -439,6 +538,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 					serialNumber
 				},
 			});
+			}
 
 			await tx.payment.update({
 				where: {
@@ -482,7 +582,7 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 			pdfDocument.text(
 				`Appointment Date: ${appointment.schedule.startDateTime.toDateString()}`,
 			);
-			pdfDocument.text(`Your Joining Time: ${joiningTime.toString()}`);
+			pdfDocument.text(`Your Joining Time: ${joiningTime?.toString()}`);
 			pdfDocument.text(`Your Serial Number: ${serialNumber}`);
 			pdfDocument.text(`Meeting Link: ${appointment.schedule.meetingLink}`);
 			pdfDocument.moveDown();

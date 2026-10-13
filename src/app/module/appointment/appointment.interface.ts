@@ -1,6 +1,7 @@
 
 export interface IBookAppointmentPayload {
     scheduleId: string;
+    serialNumber: number;
 }
 export interface IPayAppointmentPayload {
     appointmentId: string;

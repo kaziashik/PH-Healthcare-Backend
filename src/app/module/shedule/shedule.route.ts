@@ -31,6 +31,8 @@ router.get("/todays-schedule", ScheduleController.getTodaysSchedules);
 
 router.get("/future-schedules", ScheduleController.getFutureSchedules);
 
+router.get("/open-slots/:doctorId", ScheduleController.getDoctorOpenSlots);
+
 router.patch(
     "/update-schedule/:scheduleId",
     auth(Role.DOCTOR),
