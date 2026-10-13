@@ -1,6 +1,75 @@
 import cron from "node-cron";
-import { DoctorVerificationStatus, Role } from "../../generated/prisma/enums";
+import {
+  AppointmentStatus,
+  DoctorVerificationStatus,
+  PaymentStatus,
+  Role,
+} from "../../generated/prisma/enums";
 import { prisma } from "./prisma";
+
+const UNPAID_HOLD_MS = 5 * 60 * 1000;
+
+export const releaseUnpaidAppointments = async () => {
+  cron.schedule("0 * * * * *", async () => {
+    try {
+      const expiredBefore = new Date(Date.now() - UNPAID_HOLD_MS);
+      const staleAppointments = await prisma.apppointment.findMany({
+        where: {
+          status: AppointmentStatus.PENDING,
+          updatedAt: { lt: expiredBefore },
+          OR: [
+            { payment: { is: null } },
+            { payment: { status: { not: PaymentStatus.PAID } } },
+          ],
+        },
+        include: {
+          schedule: true,
+          payment: true,
+        },
+      });
+
+      for (const appointment of staleAppointments) {
+        await prisma.$transaction(async (tx) => {
+          const heldASlot = appointment.serialNumber != null;
+
+          await tx.apppointment.update({
+            where: { id: appointment.id },
+            data: {
+              status: AppointmentStatus.CANCELLED,
+              serialNumber: null,
+              joiningTime: null,
+            },
+          });
+
+          if (
+            heldASlot &&
+            appointment.schedule.availableSlots < appointment.schedule.totalSlots
+          ) {
+            await tx.schedule.update({
+              where: { id: appointment.scheduleId },
+              data: { availableSlots: { increment: 1 } },
+            });
+          }
+
+          if (appointment.payment?.status === PaymentStatus.UNPAID) {
+            await tx.payment.update({
+              where: { id: appointment.payment.id },
+              data: { status: PaymentStatus.CANCELLED },
+            });
+          }
+        });
+      }
+
+      if (staleAppointments.length > 0) {
+        console.log(
+          `Cron: Released ${staleAppointments.length} unpaid appointments older than 5 minutes`,
+        );
+      }
+    } catch (error) {
+      console.log("Cron: Failed to release unpaid appointments", error);
+    }
+  });
+};
 
 export const deleteUnverifiedDoctors = async () => {
   cron.schedule("0 */10 * * * *", async () => {
