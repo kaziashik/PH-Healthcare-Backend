@@ -8,6 +8,18 @@ const router = Router();
 router.get("/my-payments", auth(Role.PATIENT), PaymentController.getMyPayments);
 
 router.get(
+    "/:paymentId/receipt",
+    auth(Role.PATIENT),
+    PaymentController.getMyReceipt,
+);
+
+router.get(
+    "/summary",
+    auth(Role.ADMIN, Role.SUPER_ADMIN),
+    PaymentController.getPaymentSummary,
+);
+
+router.get(
     "/all-payments",
     auth(Role.ADMIN, Role.SUPER_ADMIN),
     PaymentController.getAllPayments,

@@ -12,7 +12,7 @@ import { transporter } from "../../lib/nodemailer";
 import { prisma } from "../../lib/prisma";
 import { RequestUser } from "../../middleware/checkAuth";
 import { AppError } from "../../utils/AppError";
-import { ICreateManagedAccountPayload, IUpdateAccountStatusPayload } from "./user.interface";
+import { ICreateManagedAccountPayload, IUpdateAccountStatusPayload, IUpdateMyProfilePayload } from "./user.interface";
 
 
 const updateProfileImage = async (buffer: Buffer, userId: string) => {
@@ -64,6 +64,61 @@ const updateProfileImage = async (buffer: Buffer, userId: string) => {
     await cloudinary.uploader.destroy(currentUser.image_PublicId)
   }
   return updatedUser;
+};
+
+const updateMyProfile = async (
+  userId: string,
+  payload: IUpdateMyProfilePayload,
+) => {
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { patient: true, doctor: true, admin: true },
+  });
+
+  if (!existing || existing.isDeleted) {
+    throw new AppError(httpStatus.NOT_FOUND, "User Not Found");
+  }
+
+  if (!existing.patient && !existing.doctor && !existing.admin) {
+    throw new AppError(httpStatus.NOT_FOUND, "Profile Not Found");
+  }
+
+  const name = payload.name.trim();
+  const contactNumber = payload.contactNumber.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: existing.id },
+      data: { name },
+    });
+
+    if (existing.patient) {
+      await tx.patient.update({
+        where: { id: existing.patient.id },
+        data: { name, contactNumber },
+      });
+    }
+
+    if (existing.doctor) {
+      await tx.doctor.update({
+        where: { id: existing.doctor.id },
+        data: { name, contactNumber },
+      });
+    }
+
+    if (existing.admin) {
+      await tx.admin.update({
+        where: { id: existing.admin.id },
+        data: { name, contactNumber },
+      });
+    }
+  });
+
+  return prisma.user.findUnique({
+    where: { id: existing.id },
+    omit: { password: true },
+    include: { patient: true, doctor: true, admin: true },
+  });
 };
 
 const generatePassword = () => {
@@ -275,6 +330,7 @@ const getAdmins = async (query: IQuery) => listByRole(query, [Role.ADMIN, Role.S
 
 export const userService = {
   updateProfileImage,
+  updateMyProfile,
   createManagedAccount,
   updateAccountStatus,
   getPatients,

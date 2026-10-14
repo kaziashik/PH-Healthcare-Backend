@@ -8,6 +8,22 @@ export const CreateManagedAccountZodSchema = z.object({
   address: z.string().trim().min(5, "Address must be at least 5 characters long").optional(),
 });
 
+export const UpdateMyProfileZodSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Name must be at least 2 characters long")
+    .max(80, "Name is too long"),
+  contactNumber: z
+    .string()
+    .trim()
+    .max(20, "Phone number is too long")
+    .refine(
+      (value) => value.length === 0 || /^[0-9+\-() ]{6,20}$/.test(value),
+      "Phone number is invalid",
+    ),
+});
+
 export const UpdateAccountStatusZodSchema = z.object({
   userId: z.string().min(1, "User id is required"),
   status: z.enum(["ACTIVE", "BLOCKED"], "Status must be ACTIVE or BLOCKED"),

@@ -4,7 +4,7 @@ import { upload } from "../../lib/multer";
 import { auth } from "../../middleware/checkAuth";
 import { Role } from "../../../generated/prisma/enums";
 import { validateRequest } from "../../middleware/validateRequest";
-import { CreateManagedAccountZodSchema, UpdateAccountStatusZodSchema } from "./user.validation";
+import { CreateManagedAccountZodSchema, UpdateAccountStatusZodSchema, UpdateMyProfileZodSchema } from "./user.validation";
 
 const router = Router();
 
@@ -39,6 +39,13 @@ router.get(
   "/admins",
   auth(Role.SUPER_ADMIN, Role.ADMIN),
   userController.getAdmins,
+);
+
+router.patch(
+  "/my-profile",
+  auth(Role.PATIENT, Role.DOCTOR, Role.ADMIN, Role.SUPER_ADMIN),
+  validateRequest(UpdateMyProfileZodSchema),
+  userController.updateMyProfile,
 );
 
 router.patch("/profile-image",auth(Role.SUPER_ADMIN, Role.ADMIN, Role.DOCTOR, Role.PATIENT),upload.single("profileImage"),userController.updateProfileImage);

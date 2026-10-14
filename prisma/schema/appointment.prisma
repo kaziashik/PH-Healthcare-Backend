@@ -10,6 +10,7 @@ model Apppointment {
 
   prescriptionUrl      String?
   prescriptionPublicId String?
+  prescription         Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

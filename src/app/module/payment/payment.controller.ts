@@ -17,6 +17,16 @@ const getMyPayments = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getPaymentSummary = catchAsync(async (req: Request, res: Response) => {
+    const result = await PaymentServices.getPaymentSummary();
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Payment Summary Retrieved Successfully",
+        data: result,
+    });
+});
+
 const getAllPayments = catchAsync(async (req: Request, res: Response) => {
     const { data, meta } = await PaymentServices.getAllPayments(req.query);
     sendResponse(res, {
@@ -26,6 +36,19 @@ const getAllPayments = catchAsync(async (req: Request, res: Response) => {
         data,
         meta,
     });
+});
+
+const getMyReceipt = catchAsync(async (req: Request, res: Response) => {
+    const paymentId = req.params.paymentId as string;
+    const user = req.user!;
+    const pdf = await PaymentServices.getMyReceipt(paymentId, user);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+        "Content-Disposition",
+        'inline; filename="invoice.pdf"',
+    );
+    res.status(httpStatus.OK).end(pdf);
 });
 
 const getSinglePayment = catchAsync(async (req: Request, res: Response) => {
@@ -43,6 +66,8 @@ const getSinglePayment = catchAsync(async (req: Request, res: Response) => {
 
 export const PaymentController = {
     getMyPayments,
+    getMyReceipt,
+    getPaymentSummary,
     getAllPayments,
     getSinglePayment,
 };

@@ -1,6 +1,7 @@
 import { UploadApiResponse } from "cloudinary";
 import httpStatus from "http-status";
 import PDFDocument from "pdfkit";
+import { Prisma } from "../../../generated/prisma/client";
 import { AppointmentStatus, Role } from "../../../generated/prisma/enums";
 import config from "../../config";
 import { cloudinary } from "../../lib/cloudinary";
@@ -96,52 +97,62 @@ const createPrescription = async (payload : ICreatePrescriptionPayload, user : R
     const pdfBuffer = await pdfReadyPromise;
 
 
-    const uploadResult = await new Promise<UploadApiResponse>(
-        (resolve, reject) => {
-            cloudinary.uploader
-                .upload_stream(
-                    { resource_type: "raw", format: "pdf" },
-                    (error, result) => {
-                        if (error) {
-                            return reject(error);
-                        }
+    let uploadResult: UploadApiResponse | null = null;
+    try {
+        uploadResult = await new Promise<UploadApiResponse>(
+            (resolve, reject) => {
+                cloudinary.uploader
+                    .upload_stream(
+                        { resource_type: "raw", format: "pdf" },
+                        (error, result) => {
+                            if (error || !result) {
+                                return reject(error ?? new Error("No Cloudinary result"));
+                            }
+                            resolve(result);
+                        },
+                    )
+                    .end(pdfBuffer);
+            },
+        );
+    } catch (error) {
+        console.error("Prescription file upload failed", error);
+    }
 
-                        if (!result) {
-                            return reject(
-                                new AppError(
-                                    httpStatus.INTERNAL_SERVER_ERROR,
-                                    "No Result Returned From Cloudinary",
-                                ),
-                            );
-                        }
-
-                        resolve(result);
-                    },
-                )
-                .end(pdfBuffer);
-        },
-    );
+    const prescription = {
+        findings: payload.findings,
+        medicines: payload.medicines,
+        writtenAt: new Date().toISOString(),
+    };
 
     const updatedAppointment = await prisma.apppointment.update({
         where: { id: appointment.id },
         data: {
-            prescriptionUrl: uploadResult.secure_url,
-            prescriptionPublicId: uploadResult.public_id,
+            prescription: prescription as Prisma.InputJsonValue,
+            ...(uploadResult
+                ? {
+                    prescriptionUrl: uploadResult.secure_url,
+                    prescriptionPublicId: uploadResult.public_id,
+                }
+                : {}),
         },
     });
 
-    await transporter.sendMail({
-        from: config.email_sender,
-        to: appointment.patient.email,
-        subject: "Your Prescription - PH Healthcare System",
-        text: "Please find your prescription attached.",
-        attachments: [
-            {
-                filename: "prescription.pdf",
-                content: pdfBuffer,
-            },
-        ],
-    });
+    try {
+        await transporter.sendMail({
+            from: config.email_sender,
+            to: appointment.patient.email,
+            subject: "Your Prescription - PH Healthcare System",
+            text: `Your prescription from ${doctor.name} is attached and is also saved on your appointment.`,
+            attachments: [
+                {
+                    filename: "prescription.pdf",
+                    content: pdfBuffer,
+                },
+            ],
+        });
+    } catch (error) {
+        console.error("Prescription email failed", error);
+    }
 
     return updatedAppointment
 }

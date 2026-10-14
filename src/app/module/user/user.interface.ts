@@ -12,3 +12,8 @@ export interface IUpdateAccountStatusPayload {
   userId: string;
   status: UserStatus;
 }
+
+export interface IUpdateMyProfilePayload {
+  name: string;
+  contactNumber: string;
+}

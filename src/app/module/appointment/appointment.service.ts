@@ -1,6 +1,5 @@
 import { addMinutes, isBefore, subHours } from "date-fns";
 import httpStatus from "http-status";
-import PDFDocument from "pdfkit";
 import {
 	AppointmentStatus,
 	PaymentStatus,
@@ -14,6 +13,7 @@ import { getBkashIdToken } from "../../lib/bkash";
 import { transporter } from "../../lib/nodemailer";
 import { prisma } from "../../lib/prisma";
 import type { RequestUser } from "../../middleware/checkAuth";
+import { buildAppointmentInvoicePdf } from "../../utils/appointment-invoice";
 import { AppError } from "../../utils/AppError";
 import { IBookAppointmentPayload, ICancelAppointmentPayload, IPayAppointmentPayload, IUpdateAppointmentStatusPayload } from "./appointment.interface";
 
@@ -553,48 +553,19 @@ const bookAppointmentCallback = async (query: Record<string, any>) => {
 				},
 			});
 
-			const pdfDocument = new PDFDocument({ margin : 50});
-
-			const pdfChunks : Buffer[] = []
-
-			pdfDocument.on("data", (chunk : Buffer) => {
-				pdfChunks.push(chunk)
-			})
-
-			const pdfReadyPromise = new Promise<Buffer>((resolve)=>{
-				pdfDocument.on("end", () => {
-					resolve(Buffer.concat(pdfChunks))
-				})
-			})
-
-			pdfDocument.fontSize(20).text("PH Healthcare System", {align : "center"});
-			pdfDocument.fontSize(14).text("Appointment Invoice", { align: "center" });
-			pdfDocument.moveDown(2)
-
-			pdfDocument.fontSize(12).text(`Patient Name: ${appointment.patient?.name}`);
-			pdfDocument.text(`Patient Email: ${appointment.patient?.email}`);
-			pdfDocument.moveDown();
-
-			pdfDocument.text(`Doctor Name: ${appointment.doctor?.name}`);
-			pdfDocument.text(`Specialization: ${appointment.doctor?.specialization}`);
-			pdfDocument.moveDown();
-
-			pdfDocument.text(
-				`Appointment Date: ${appointment.schedule.startDateTime.toDateString()}`,
-			);
-			pdfDocument.text(`Your Joining Time: ${joiningTime?.toString()}`);
-			pdfDocument.text(`Your Serial Number: ${serialNumber}`);
-			pdfDocument.text(`Meeting Link: ${appointment.schedule.meetingLink}`);
-			pdfDocument.moveDown();
-
-			pdfDocument.text(`Amount Paid: ${executedPaymentResult.amount} BDT`);
-			pdfDocument.text(`Payment Method: bKash`);
-			pdfDocument.text(`Transaction Id: ${executedPaymentResult.trxID}`);
-			pdfDocument.text(`Paid At: ${executedPaymentResult.paymentExecuteTime}`);
-
-			pdfDocument.end()
-
-			const pdfBuffer = await pdfReadyPromise;
+			const pdfBuffer = await buildAppointmentInvoicePdf({
+				patientName: appointment.patient?.name ?? "",
+				patientEmail: appointment.patient?.email ?? "",
+				doctorName: appointment.doctor?.name ?? "",
+				specialization: appointment.doctor?.specialization ?? "",
+				appointmentDate: appointment.schedule.startDateTime.toDateString(),
+				joiningTime: joiningTime?.toString() ?? "",
+				serialNumber: String(serialNumber ?? ""),
+				meetingLink: appointment.schedule.meetingLink,
+				amount: String(executedPaymentResult.amount),
+				transactionId: executedPaymentResult.trxID,
+				paidAt: String(executedPaymentResult.paymentExecuteTime),
+			});
 
 			await transporter.sendMail({
 				from: config.email_sender,
@@ -868,6 +839,33 @@ const updateAppointmentStatus = async (
 	return updatedAppointment
 }
 
+const withPatientMeetingLink = <
+	T extends {
+		status: AppointmentStatus;
+		payment: { status: PaymentStatus } | null;
+		schedule: { meetingLink: string } | null;
+	},
+>(
+	appointment: T,
+): T => {
+	const paid =
+		appointment.payment?.status === PaymentStatus.PAID &&
+		appointment.status !== AppointmentStatus.PENDING &&
+		appointment.status !== AppointmentStatus.CANCELLED;
+
+	if (paid || !appointment.schedule) {
+		return appointment;
+	}
+
+	return {
+		...appointment,
+		schedule: {
+			...appointment.schedule,
+			meetingLink: "",
+		},
+	};
+};
+
 //patient appointments
 const getMyAppointments = async (query : IQuery, user : RequestUser) => {
 
@@ -902,7 +900,14 @@ const getMyAppointments = async (query : IQuery, user : RequestUser) => {
 		skip,
 		orderBy: { [sortBy] : sortOrder},
 		include: {
-			doctor: { select: { id: true, name: true, specialization: true } },
+			doctor: {
+				select: {
+					id: true,
+					name: true,
+					specialization: true,
+					user: { select: { imageUrl: true } },
+				},
+			},
 			schedule: true,
 			payment: true,
 		},
@@ -913,7 +918,7 @@ const getMyAppointments = async (query : IQuery, user : RequestUser) => {
 	});
 
 	return {
-		data: appointments,
+		data: appointments.map(withPatientMeetingLink),
 		meta: {
 			page,
 			limit,
@@ -954,24 +959,46 @@ const getDoctorAppointments = async (query: IQuery, user: RequestUser) => {
 
 	const appointments = await prisma.apppointment.findMany({
 		where: { AND: andConditions },
-		take: limit,
-		skip,
 		orderBy: { [sortBy] : sortOrder},
 		include: {
 			patient: {
-				select: { id: true, name: true, email: true, contactNumber: true },
+				select: {
+					id: true,
+					name: true,
+					email: true,
+					contactNumber: true,
+					user: { select: { imageUrl: true } },
+				},
 			},
 			schedule: true,
 			payment: true,
 		},
 	});
 
-	const total = await prisma.apppointment.count({
-		where: { AND: andConditions },
+	const statusRank: Record<string, number> = {
+		ONGOING: 0,
+		BOOKED: 1,
+		CONFIRMED: 1,
+		PENDING: 2,
+		COMPLETED: 3,
+		CANCELLED: 4,
+	};
+
+	const ordered = [...appointments].sort((left, right) => {
+		const rank =
+			(statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9);
+		if (rank !== 0) {
+			return rank;
+		}
+		const leftTime = left.joiningTime?.getTime() ?? left.createdAt.getTime();
+		const rightTime = right.joiningTime?.getTime() ?? right.createdAt.getTime();
+		return rightTime - leftTime;
 	});
+	const visible = ordered.slice(skip, skip + limit);
+	const total = ordered.length;
 
 	return {
-		data: appointments,
+		data: visible,
 		meta: {
 			page,
 			limit,
@@ -1081,6 +1108,10 @@ const getSingleAppointment = async (appointmentId : string, user : RequestUser) 
 				"You Are Not Allowed To View This Appointment",
 			);
 		}
+	}
+
+	if (user.role === Role.PATIENT) {
+		return withPatientMeetingLink(appointment);
 	}
 
 	return appointment

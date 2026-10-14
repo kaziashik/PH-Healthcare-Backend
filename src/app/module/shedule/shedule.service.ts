@@ -53,6 +53,13 @@ const createSchedule = async (payload : ICreateSchedulePayload , user : RequestU
         throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
     }
 
+    if (doctor.verificationStatus !== DoctorVerificationStatus.APPROVED) {
+        throw new AppError(
+            httpStatus.FORBIDDEN,
+            "Your Doctor Application Is Not Approved Yet",
+        );
+    }
+
     const durationInMinutes = assertScheduleWindow(
         payload.startDateTime,
         payload.endDateTime,
