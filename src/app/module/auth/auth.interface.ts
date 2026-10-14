@@ -10,6 +10,8 @@ export interface IRegisterPatientPayload {
   name: string;
   email: string;
   password: string;
+  imageUrl?: string;
+  imagePublicId?: string;
   patient?: {
     contactNumber?: string;
     gender?: "MALE" | "FEMALE" | "OTHER";

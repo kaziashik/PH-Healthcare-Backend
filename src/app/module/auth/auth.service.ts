@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { UploadApiResponse } from "cloudinary";
 import { JwtPayload, SignOptions } from "jsonwebtoken";
 import {
   Role,
@@ -7,6 +8,7 @@ import {
   DoctorVerificationStatus,
 } from "../../../generated/prisma/enums";
 import config from "../../config";
+import { cloudinary } from "../../lib/cloudinary";
 import { prisma } from "../../lib/prisma";
 import { jwtUtils } from "../../utils/jwt";
 import { googleClient } from "../../lib/googleAuth";
@@ -29,7 +31,27 @@ import {
 import { redisClient } from "../../lib/redits";
 import { transporter } from "../../lib/nodemailer";
 
-const registerPatient = async (payload: IRegisterPatientPayload) => {
+const uploadProfileBuffer = (buffer: Buffer) =>
+  new Promise<UploadApiResponse>((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream({ resource_type: "image" }, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        if (!result) {
+          reject(new Error("No result returned from Cloudinary"));
+          return;
+        }
+        resolve(result);
+      })
+      .end(buffer);
+  });
+
+const registerPatient = async (
+  payload: IRegisterPatientPayload,
+  file?: Express.Multer.File,
+) => {
   const { name, password, patient: patientData } = payload;
   const email = payload.email.trim().toLowerCase();
 
@@ -60,12 +82,22 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
 
   const hashedPassword = await bcrypt.hash(password, 8);
 
+  let imageUrl = "";
+  let imagePublicId = "";
+  if (file) {
+    const uploaded = await uploadProfileBuffer(file.buffer);
+    imageUrl = uploaded.secure_url;
+    imagePublicId = uploaded.public_id;
+  }
+
   const patientRegistrationKey = `patient-registration-data:${email}`;
   const redisUserDataPayload = {
     name,
     email,
     password: hashedPassword,
     patient: patientData,
+    imageUrl,
+    imagePublicId,
   };
 
   await redisClient.set(
@@ -205,6 +237,8 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
       role: Role.PATIENT,
       status: UserStatus.ACTIVE,
       emailVerified: true,
+      imageUrl: patientPayload.imageUrl || "",
+      image_PublicId: patientPayload.imagePublicId || "",
       patient: {
         create: {
           name: patientPayload.name,

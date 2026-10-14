@@ -851,7 +851,8 @@ const withPatientMeetingLink = <
 	const paid =
 		appointment.payment?.status === PaymentStatus.PAID &&
 		appointment.status !== AppointmentStatus.PENDING &&
-		appointment.status !== AppointmentStatus.CANCELLED;
+		appointment.status !== AppointmentStatus.CANCELLED &&
+		appointment.status !== AppointmentStatus.COMPLETED;
 
 	if (paid || !appointment.schedule) {
 		return appointment;

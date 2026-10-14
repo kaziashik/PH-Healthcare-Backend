@@ -30,6 +30,9 @@ const setAuthCookies = (
   });
 };
 
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+
 const registerPatient = catchAsync(async (req: Request, res: Response) => {
  // const payload = PatientValidation.PatientRegistrationZodSchema.safeParse(req.body);
 
@@ -41,8 +44,17 @@ const registerPatient = catchAsync(async (req: Request, res: Response) => {
 	// }
 
 	// console.log(payload);
+  if (req.file) {
+    if (!PHOTO_TYPES.has(req.file.mimetype)) {
+      throw new Error("Profile photo must be a JPG, PNG, or WEBP image");
+    }
+    if (req.file.size > MAX_PHOTO_BYTES) {
+      throw new Error("Profile photo must be 2 MB or smaller");
+    }
+  }
+
   const payload = req.body;
- await AuthService.registerPatient(payload);
+  await AuthService.registerPatient(payload, req.file);
 
   // const { accessToken, refreshToken, user, patient } = result;
 

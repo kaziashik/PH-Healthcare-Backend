@@ -1,18 +1,36 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { Role } from "../../../generated/prisma/enums";
+import { upload } from "../../lib/multer";
 import { auth } from "../../middleware/checkAuth";
 import { AuthController } from "./auth.controller";
-import { catchAsync } from "../../utils/catchAsync";
-import z from "zod";
 import { validateRequest } from "../../middleware/validateRequest";
 import { userValidation } from "./auth.validation";
+
+const normalizeRegisterBody = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  if (typeof req.body?.patient === "string" && req.body.patient.trim()) {
+    try {
+      req.body.patient = JSON.parse(req.body.patient);
+    } catch {
+      next(new Error("Patient details are invalid"));
+      return;
+    }
+  }
+  next();
+};
 
 const router = Router();
 
 
 
 router.post(
-  "/register",validateRequest(userValidation.PatientRegistrationZodSchema),
+  "/register",
+  upload.single("profileImage"),
+  normalizeRegisterBody,
+  validateRequest(userValidation.PatientRegistrationZodSchema),
   AuthController.registerPatient,
 );
 
