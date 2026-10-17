@@ -12,7 +12,7 @@
 ![PH Healthcare presentation poster](presentation-poster.png)
 
 
-# PH Healthcare
+
 
 PH Healthcare is a doctor appointment booking website built around verified doctors. The website has four roles: **patient**, **doctor**, **admin**, and **super admin**.
 
@@ -36,68 +36,154 @@ I built it as two separate applications.
 - **Backend:** Express with Prisma and PostgreSQL, JWT authentication with role-based access, and Redis and node-cron for background tasks.
 
 
+# 🏥 Doctor Appointment System: Flow & Database
 
+<a id="toc"></a>
+## 📑 Contents
 
-## 1. One-look system flow
+| # | Section | What it shows |
+|---|---|---|
+| 1 | [🧭 System flow](#s1) | Whole journey from visitor to prescription |
+| 2 | [🤝 Roles on one visit](#s2) | Who talks to whom, step by step |
+| 3 | [🗄️ ER diagram](#s3) | Database tables and relationships |
+
+---
+
+<a id="s1"></a>
+## 1. 🧭 System Flow
 
 ```mermaid
+%%{init: {'theme':'neutral'}}%%
 flowchart TD
-    A["Visitor opens the site"] --> B["Browse approved doctors"]
-    B --> C["Open a doctor page"]
-    C --> D{"Logged in as patient?"}
-    D -- No --> E["Register or login as PATIENT"]
-    E --> C
-    D -- Yes --> F["Book an open schedule for today"]
-    F --> G["Status PENDING"]
-    G --> H["Pay the consultation fee with bKash"]
-    H --> I{"bKash result"}
-    I -- Payment succeeds --> J["Status BOOKED and a 20-minute serial"]
-    I -- Payment does not finish --> G
-    J --> K["Doctor sets ONGOING"]
-    K --> L["Doctor sets COMPLETED"]
-    L --> M["Doctor writes the prescription"]
-    M --> N["Patient receives the prescription"]
+    START(["🌐 Visitor opens the site"]) --> B["🔍 Browse approved doctors"]
 
-    classDef visitor fill:#ede9fe,stroke:#7c3aed,color:#1e1b4b
-    classDef patient fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
-    classDef doctor fill:#dcfce7,stroke:#16a34a,color:#14532d
-    classDef pay fill:#fef9c3,stroke:#ca8a04,color:#713f12
-    class A,B,C visitor
-    class D,E,F,N patient
-    class K,L,M doctor
-    class G,H,I,J pay
+    subgraph ADM["🛡️ Admin"]
+        AP["✅ Approve doctor"]
+    end
+    AP -.-> B
+
+    B --> C["🩺 Open a doctor page"]
+    C --> D{"🔐 Logged in<br/>as patient?"}
+    D -->|"No"| E["📝 Register or login"]
+    E --> C
+    D -->|"Yes"| F["🗓️ Book an open schedule<br/>for today"]
+
+    subgraph PAY["💳 Payment"]
+        G["⏳ PENDING"] --> H["📲 Pay fee with bKash"]
+        H --> I{"Result?"}
+        I -->|"Not finished"| G
+        I -->|"Success"| J["🎟️ BOOKED<br/>20-minute serial"]
+    end
+    F --> G
+
+    subgraph DOC["🩺 Doctor"]
+        K["▶️ ONGOING"] --> L["✔️ COMPLETED"] --> M["💊 Write prescription"]
+    end
+    J --> K
+    M --> N(["📧 Patient receives prescription"])
+
+    CAN{"🚫 Patient cancels?"}
+    G -.-> CAN
+    J -.-> CAN
+    CAN -->|"More than 1 hour<br/>before start"| R1["💸 Refunded"]
+    CAN -->|"From 1 hour before<br/>start onward"| R2["🚫 No refund"]
 ```
 
-A patient can cancel. More than 1 hour before the schedule starts, the payment is refunded. From 1 hour before the start onward, the visit can still be cancelled, without a refund.
-
-## 2. How the four roles meet on one visit
+### 🔄 Appointment status
 
 ```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    S1["⏳ PENDING"] --> S2["🎟️ BOOKED"] --> S3["▶️ ONGOING"] --> S4["✅ COMPLETED"]
+    S1 -.-> S5["❌ CANCELLED"]
+    S2 -.-> S5
+```
+
+> 🚫 **Cancellation:** more than **1 hour** before the schedule starts → payment is **refunded**. From **1 hour before** the start onward → the visit can still be cancelled, **without a refund**.
+
+[⬆️ Back to contents](#toc)
+
+---
+
+<a id="s2"></a>
+## 2. 🤝 How the Four Roles Meet on One Visit
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
 sequenceDiagram
-    participant V as Visitor
-    participant P as Patient
-    participant D as Doctor
-    participant A as Admin
-    participant API as API
-    participant B as bKash
+    autonumber
+    participant V as 👤 Visitor
+    participant P as 🧑 Patient
+    participant D as 🩺 Doctor
+    participant A as 🛡️ Admin
+    participant API as ⚙️ API
+    participant B as 📲 bKash
+
+    Note over A,API: Admin or super admin approves the doctor before any of this is public
+    A->>API: Approve doctor
 
     V->>API: Browse approved doctors
+    API-->>V: Doctor list
+
     P->>API: Register, verify email, book today's schedule
     API-->>P: Appointment is PENDING
+
     P->>API: Start bKash payment
-    API->>B: Payment page
+    API->>B: Open payment page
     B->>API: Payment callback
-    API-->>P: Status BOOKED, serial, invoice email
+    API-->>P: BOOKED, serial, invoice email
+
     D->>API: Set ONGOING, then COMPLETED
     D->>API: Create prescription
     API-->>P: Prescription email
-    Note over A,API: Admin or super admin approves the doctor before any of this is public
 ```
 
+[⬆️ Back to contents](#toc)
 
-# ER diagram
+---
+
+<a id="s3"></a>
+## 3. 🗄️ ER Diagram
+
+### 🧩 Tables
+
+| Icon | Table | Purpose |
+|---|---|---|
+| 👤 | `users` | Login account for everyone (email, password, Google login, role, status) |
+| 🧑 | `patients` | Patient profile linked to a user |
+| 🩺 | `doctors` | Doctor profile, licence, fee, approval status |
+| 🛡️ | `admins` | Admin profile (organization + personal email) |
+| 🗓️ | `schedules` | Time slots a doctor publishes |
+| 📅 | `appointments` | A patient's booking, serial number and prescription |
+| 💳 | `payments` | bKash payment for an appointment |
+
+### 🕸️ Relationship map
 
 ```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    U["👤 users"]
+    PA["🧑 patients"]
+    DO["🩺 doctors"]
+    AD["🛡️ admins"]
+    SC["🗓️ schedules"]
+    AP["📅 appointments"]
+    PY["💳 payments"]
+
+    U -->|"has"| PA
+    U -->|"has"| DO
+    U -->|"has"| AD
+    DO -->|"publishes"| SC
+    PA -->|"books"| AP
+    DO -->|"sees"| AP
+    SC -->|"holds"| AP
+    AP -->|"paid by"| PY
+```
+
+### 📐 Full ER diagram
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
 erDiagram
     users ||--o| patients : "has"
     users ||--o| doctors : "has"
@@ -185,6 +271,16 @@ erDiagram
         uuid appointmentId FK
     }
 ```
+
+### 🔑 Legend
+
+| Short | Meaning |
+|---|---|
+| 🔑 **PK** | Primary key: unique id of the row |
+| 🔗 **FK** | Foreign key: points to a row in another table |
+| ⭐ **UK** | Unique key: value cannot repeat (e.g. email, licence number) |
+
+[⬆️ Back to contents](#toc)
 
 
 REST API for a doctor-appointment platform: patients book consultations, doctors run them, admins manage the platform. This repo is the backend only.
