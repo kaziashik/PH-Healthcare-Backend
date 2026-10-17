@@ -106,34 +106,55 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ```
 src/
-├── server.ts                       # connects to the DB, then starts listening
-├── app.ts                          # express app: cors, body parsing, routes, error handling
-├── generated/prisma/                # Prisma client — git-ignored, run `npx prisma generate`
+├── server.ts
+├── app.ts
 └── app/
-    ├── config/index.ts              # reads and exposes every environment variable
-    ├── lib/prisma.ts                # shared PrismaClient instance — always import this, don't `new` your own
+    ├── config/index.ts
+    ├── interfaces/
+    ├── lib/
+    │   ├── prisma.ts
+    │   ├── redits.ts              # Redis
+    │   ├── bkash.ts
+    │   ├── cloudinary.ts
+    │   ├── cron.ts
+    │   ├── googleAuth.ts
+    │   ├── multer.ts
+    │   └── nodemailer.ts
     ├── middleware/
-    │   ├── checkAuth.ts             # exports `auth(...roles)`, the JWT + role guard
-    │   ├── globalErrorHandler.ts    # turns thrown errors into JSON responses
-    │   └── notFound.ts              # catch-all for unmatched routes
+    │   ├── checkAuth.ts
+    │   ├── validateRequest.ts
+    │   ├── globalErrorHandler.ts
+    │   └── notFound.ts
     ├── utils/
-    │   ├── catchAsync.ts            # wraps async route handlers so thrown errors reach the error handler
-    │   ├── jwt.ts                   # sign / verify helpers
-    │   └── sendResponse.ts          # the standard `{ success, statusCode, message, data }` envelope
+    │   ├── catchAsync.ts
+    │   ├── jwt.ts
+    │   ├── sendResponse.ts
+    │   ├── AppError.ts
+    │   ├── appointment-invoice.ts
+    │   └── seed.ts
     └── module/
-        └── auth/                    # the one feature module that exists so far
-            ├── auth.route.ts
-            ├── auth.controller.ts
-            ├── auth.service.ts
-            └── auth.interface.ts
+        ├── auth/
+        ├── user/
+        ├── doctor/
+        ├── shedule/               # folder name is shedule (typo kept)
+        ├── appointment/
+        ├── payment/
+        ├── prescription/
+        ├── contact/
+        └── templates/             # EJS email templates
 
 prisma/
 ├── schema/
-│   ├── schema.prisma                # generator + datasource only
+│   ├── schema.prisma
+│   ├── enums.prisma
 │   ├── user.prisma
 │   ├── patient.prisma
-│   └── enums.prisma                 # Role, UserStatus, Gender
-└── migrations/                      # generated SQL, committed to git
+│   ├── doctor.prisma
+│   ├── admin.prisma
+│   ├── schedule.prisma
+│   ├── appointment.prisma
+│   └── payment.prisma
+└── migrations/                    # committed SQL migrations
 ```
 
 Prisma's schema is split across multiple files, wired together by `prisma.config.ts` at the repo root. That file also loads `.env` so the Prisma CLI can see `DATABASE_URL`.
