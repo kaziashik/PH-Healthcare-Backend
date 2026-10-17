@@ -1,5 +1,192 @@
 # PH Healthcare System — Backend
 
+
+[![Live Site](https://img.shields.io/badge/Live-ph--healthcare--six.vercel.app-4c8bf5)](https://ph-healthcare-six.vercel.app)
+[![Backend API](https://img.shields.io/badge/API-ph--healthcare--api.vercel.app-6cc644)](https://ph-healthcare-api.vercel.app)
+
+
+---
+
+# PH Healthcare — Full workflow
+
+![PH Healthcare presentation poster](presentation-poster.png)
+
+
+# PH Healthcare
+
+PH Healthcare is a doctor appointment booking website built around verified doctors. The website has four roles: **patient**, **doctor**, **admin**, and **super admin**.
+
+## 1. Patient
+
+Patients can search for a specific doctor by name, specialty, and fee, choose one they like, book an available time slot, and pay the consultation fee with Stripe or bKash. Right after payment, they receive a payment receipt and a Google Meet link by email, and they use that link to meet the doctor at the time they booked. After the visit, the patient receives the prescription by email and can also view it in their account on the website.
+
+## 2. Doctor
+
+Doctors apply on the website with their resume, certificate, and experience. Once the admin checks the application and approves the doctor, the doctor receives an email saying they were approved, along with their login details. The doctor then signs in and creates their available schedule, so patients can book it. After the visit, the doctor records findings and medicines and submits the prescription.
+
+## 3. Admin and Super Admin
+
+The admin checks every doctor application, including the resume, certificate, and experience. If everything is correct, the admin approves the doctor, and only then can the doctor appear on the website and create a schedule. If anything is wrong, the admin can reject the application or block a patient or doctor. The admin can also see all reviews, payment stats, and analytics with graphs and reports. The super admin has the same powers and can also create, block, and unblock admin accounts.
+
+## Technology
+
+I built it as two separate applications.
+
+- **Frontend:** Next.js 16, React 19, and TypeScript, with Tailwind CSS and shadcn/ui for the interface, TanStack Query for data fetching, and TanStack Form with Zod for form validation. It also includes Google Sign-In, email OTP verification, and PDF preview for doctors' resumes and certificates.
+- **Backend:** Express with Prisma and PostgreSQL, JWT authentication with role-based access, and Redis and node-cron for background tasks.
+
+
+
+
+## 1. One-look system flow
+
+```mermaid
+flowchart TD
+    A["Visitor opens the site"] --> B["Browse approved doctors"]
+    B --> C["Open a doctor page"]
+    C --> D{"Logged in as patient?"}
+    D -- No --> E["Register or login as PATIENT"]
+    E --> C
+    D -- Yes --> F["Book an open schedule for today"]
+    F --> G["Status PENDING"]
+    G --> H["Pay the consultation fee with bKash"]
+    H --> I{"bKash result"}
+    I -- Payment succeeds --> J["Status BOOKED and a 20-minute serial"]
+    I -- Payment does not finish --> G
+    J --> K["Doctor sets ONGOING"]
+    K --> L["Doctor sets COMPLETED"]
+    L --> M["Doctor writes the prescription"]
+    M --> N["Patient receives the prescription"]
+
+    classDef visitor fill:#ede9fe,stroke:#7c3aed,color:#1e1b4b
+    classDef patient fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef doctor fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef pay fill:#fef9c3,stroke:#ca8a04,color:#713f12
+    class A,B,C visitor
+    class D,E,F,N patient
+    class K,L,M doctor
+    class G,H,I,J pay
+```
+
+A patient can cancel. More than 1 hour before the schedule starts, the payment is refunded. From 1 hour before the start onward, the visit can still be cancelled, without a refund.
+
+## 2. How the four roles meet on one visit
+
+```mermaid
+sequenceDiagram
+    participant V as Visitor
+    participant P as Patient
+    participant D as Doctor
+    participant A as Admin
+    participant API as API
+    participant B as bKash
+
+    V->>API: Browse approved doctors
+    P->>API: Register, verify email, book today's schedule
+    API-->>P: Appointment is PENDING
+    P->>API: Start bKash payment
+    API->>B: Payment page
+    B->>API: Payment callback
+    API-->>P: Status BOOKED, serial, invoice email
+    D->>API: Set ONGOING, then COMPLETED
+    D->>API: Create prescription
+    API-->>P: Prescription email
+    Note over A,API: Admin or super admin approves the doctor before any of this is public
+```
+
+
+# ER diagram
+
+```mermaid
+erDiagram
+    users ||--o| patients : "has"
+    users ||--o| doctors : "has"
+    users ||--o| admins : "has"
+    doctors ||--o{ schedules : "publishes"
+    patients ||--o{ appointments : "books"
+    doctors ||--o{ appointments : "sees"
+    schedules ||--o{ appointments : "holds"
+    appointments ||--o| payments : "paid by"
+
+    users {
+        uuid id PK
+        text name
+        text email UK
+        text password
+        text googleId UK
+        enum authProvider
+        boolean emailVerified
+        enum role
+        enum status
+        text imageUrl
+        text image_PublicId
+    }
+
+    patients {
+        uuid id PK
+        text name
+        text email UK
+        text contactNumber
+        enum gender
+        uuid userId FK
+    }
+
+    doctors {
+        uuid id PK
+        text name
+        text email UK
+        text specialization
+        text licenseNumber UK
+        int experienceYears
+        decimal consultationFee
+        enum verificationStatus
+        uuid userId FK
+    }
+
+    admins {
+        uuid id PK
+        text name
+        text organizationEmail UK
+        text personalEmail
+        uuid userId FK
+    }
+
+    schedules {
+        uuid id PK
+        timestamp startDateTime
+        timestamp endDateTime
+        int totalSlots
+        int availableSlots
+        text meetingLink
+        enum status
+        uuid doctorId FK
+    }
+
+    appointments {
+        uuid id PK
+        enum status
+        timestamp joiningTime
+        int serialNumber
+        json prescription
+        text prescriptionUrl
+        uuid patientId FK
+        uuid doctorId FK
+        uuid scheduleId FK
+    }
+
+    payments {
+        uuid id PK
+        enum status
+        decimal amount
+        text currency
+        text paymentGateway
+        text merchantInvoiceNumber UK
+        text bkashPaymentId UK
+        uuid appointmentId FK
+    }
+```
+
+
 REST API for a doctor-appointment platform: patients book consultations, doctors run them, admins manage the platform. This repo is the backend only.
 
 **Stack:** Node.js · Express 5 · TypeScript · Prisma 7 · PostgreSQL · JWT auth
