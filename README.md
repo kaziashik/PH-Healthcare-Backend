@@ -5,11 +5,21 @@ REST API for same-day doctor visits. A patient books a published schedule, pays 
 [![Live API](https://img.shields.io/badge/API-ph--healthcare--api.vercel.app-6cc644)](https://ph-healthcare-api.vercel.app)
 [![Live site](https://img.shields.io/badge/Site-ph--healthcare--six.vercel.app-4c8bf5)](https://ph-healthcare-six.vercel.app)
 
-**Stack:** Node.js · Express 5 · TypeScript · Prisma 7 · PostgreSQL · Redis · JWT cookies · bKash
+| Resource | Link |
+|---|---|
+| **Live Frontend** | [https://ph-healthcare-six.vercel.app](https://ph-healthcare-six.vercel.app) |
+| **Backend API** | [https://ph-healthcare-api.vercel.app](https://ph-healthcare-api.vercel.app) |
+| **Frontend Code** | [github.com/kaziashik/PH-Healthcare-Management-System-Frontend](https://github.com/kaziashik/PH-Healthcare-Management-System-Frontend) |
+| **Backend Code** | [github.com/kaziashik/PH-Healthcare-Backend](https://github.com/kaziashik/PH-Healthcare-Backend) |
+| **API Documentation** | [`resources/docs/PH_Healthcare_API_Design_Documentation.md`](./resources/docs/PH_Healthcare_API_Design_Documentation.md) |
+| **Postman Collection** | [`resources/postman/PH Healthcare API.postman_collection.json`](./resources/postman/PH%20Healthcare%20API.postman_collection.json) |
+| **Database Diagram (drawSQL)** | [drawsql.app/teams/kazi-ashikur/diagrams/ph-healthcare-system-erd](https://drawsql.app/teams/kazi-ashikur/diagrams/ph-healthcare-system-erd) |
+
+**Stack:** Node.js · Express 5 · TypeScript · Prisma 7 · PostgreSQL · Redis · JWT cookies · bKash · node-cron
 
 This folder is the API only. The product walkthrough, role diagrams, and screen map are in the frontend README: [`../PH Healthcare Management System Frontend/README.md`](../PH%20Healthcare%20Management%20System%20Frontend/README.md).
 
-Every route is listed in [`../PH Healthcare Management System Frontend/Note/API-Endpoints.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/API-Endpoints.md). The product rules are in [`../PH Healthcare Management System Frontend/Note/Project Requirements.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/Project%20Requirements.md).
+Every route is listed in [`API-Routes.md`](./API-Routes.md) and in [`resources/docs/PH_Healthcare_API_Design_Documentation.md`](./resources/docs/PH_Healthcare_API_Design_Documentation.md). The product rules are in [`../PH Healthcare Management System Frontend/Note/Project Requirements.md`](../PH%20Healthcare%20Management%20System%20Frontend/Note/Project%20Requirements.md).
 
 Base URL locally: `http://localhost:5000`. Live base URL: `https://ph-healthcare-api.vercel.app`. Feature routes use the prefix `/api/v1`.
 
