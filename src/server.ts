@@ -3,6 +3,7 @@ import config from "./app/config";
 import {
   deleteUnverifiedDoctors,
   releaseUnpaidAppointments,
+   reindexDoctorEmbeddings
 } from "./app/lib/cron";
 import { transporter } from "./app/lib/nodemailer";
 import { prisma } from "./app/lib/prisma";
@@ -13,6 +14,8 @@ import {
   seedTesterAdmin,
   seedTesterDoctor,
 } from "./app/utils/seed";
+
+
 
 const PORT = config.port;
 
@@ -29,6 +32,11 @@ const connectServices = async () => {
   await seedTesterAdmin();
   await seedTesterDoctor();
   await seedRosterDoctors();
+
+
+     // await reindexAllDoctors();
+    await deleteUnverifiedDoctors();
+    await reindexDoctorEmbeddings();
 };
 
 const isVercel = process.env.VERCEL === "1";

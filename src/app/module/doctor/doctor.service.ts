@@ -15,6 +15,7 @@ import httpStatus from "http-status";
 import { RequestUser } from "../../middleware/checkAuth";
 import { DoctorWhereInput } from "../../../generated/prisma/models";
 import { IQuery } from "../../interfaces";
+import { upsertDoctorEmbedding } from "../chat/chat.indexer";
 
 const applyAsDoctor = async (
   payload: IApplyAsDoctorPayload,
@@ -298,6 +299,9 @@ const approveDoctor = async (payload : IApproveDoctorPayload, reviewer : Request
 		},
 	});
 
+
+	syncDoctorEmbeddings(updatedDoctor.id);
+
 	const isApproved = verificationStatus === DoctorVerificationStatus.APPROVED;
 
 	const templatePath = path.join(
@@ -516,10 +520,18 @@ const updateDoctorProfile = async (payload : IUpdateDoctorProfilePayload, user :
 		where: { id: existingDoctor.id },
 		data: payload,
 	});
+	syncDoctorEmbeddings(updatedDoctor.id);
 
 	return updatedDoctor;
 
 }
+
+const syncDoctorEmbeddings = (doctorId: string) => {
+	upsertDoctorEmbedding(doctorId).catch((error) => 
+		console.error(`Failed to sync doctor embedding for doctorId: ${doctorId}`, error))
+	}
+
+	
 
 export const DoctorServices = {
   applyAsDoctor,

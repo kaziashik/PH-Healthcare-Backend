@@ -15,6 +15,7 @@ import { ScheduleRoutes } from './app/module/shedule/shedule.route'
 import { PaymentRoutes } from './app/module/payment/payment.route'
 import { PrescriptionRoutes } from './app/module/prescription/prescription.route'
 import { ContactRoutes } from './app/module/contact/contact.route'
+import { ChatRoutes } from './app/module/chat/chat.route'
 
 
 
@@ -64,6 +65,7 @@ app.use("/api/v1/doctor", DoctorRoutes);
 app.use("/api/v1/schedule", ScheduleRoutes);
 app.use("/api/v1/payment", PaymentRoutes);
 app.use("/api/v1/contact", ContactRoutes);
+app.use("/api/v1/chat",ChatRoutes)
 
 app.get("/test",async (req: Request, res: Response,next: NextFunction) => {
 try {
